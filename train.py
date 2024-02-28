@@ -60,7 +60,7 @@ def setup(args):
     # Prepare model
     config = CONFIGS[args.model_type]
 
-    num_classes = 24
+    num_classes = 24 # var 24
 
     model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
     model.load_from(np.load(args.pretrained_dir))
@@ -190,7 +190,7 @@ def train(args, model):
     while True:
         model.train()
         epoch_iterator = tqdm(train_loader,
-                              desc="Training (X / X Steps) (loss=X.X)",
+                              desc=f"Training ({global_step} / {t_total} Steps) (loss={losses.val})",
                               bar_format="{l_bar}{r_bar}",
                               dynamic_ncols=True,
                               disable=args.local_rank not in [-1, 0])
@@ -199,8 +199,12 @@ def train(args, model):
             y = batch['landmarks'].to(args.device)
             #batch = tuple(batch[t].to(args.device) for t in batch)
             #x, y = batch
-            loss = model(x, y)
-
+#            print(len(x))
+#            if len(x) == 20:
+            loss = model.forward(x.float(), y.float())
+#            else:
+#                break
+            
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
             if args.fp16:
