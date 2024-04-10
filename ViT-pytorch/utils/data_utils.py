@@ -10,7 +10,7 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, Dataset, RandomSampler, DistributedSampler, SequentialSampler
 
 # Specify the path to the new working directory
-new_working_directory = "C:\\Users\\avs20\\Documents\\ViT-pytorch-main"
+new_working_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
 
 # Change the working directory
 os.chdir(new_working_directory)

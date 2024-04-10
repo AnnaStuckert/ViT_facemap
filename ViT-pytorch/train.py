@@ -29,7 +29,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Specify the path to the new working directory
-new_directory = 'C:/Users/avs20/Documents/ViT-pytorch-main'
+new_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
 
 
 
@@ -354,7 +354,7 @@ def main():
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=20, type=int,
                         help="Total batch size for eval.")
-    parser.add_argument("--eval_every", default=20, type=int,
+    parser.add_argument("--eval_every", default=100, type=int,
                         help="Run prediction on validation set every so many steps."
                              "Will always run one evaluation at the end of training.")
 
