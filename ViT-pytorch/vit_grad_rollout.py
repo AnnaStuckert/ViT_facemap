@@ -57,7 +57,7 @@ class VITAttentionGradRollout:
         self.model.zero_grad()
         output = self.model(input_tensor)
         category_mask = torch.zeros(output[0].size())
-        category_mask[:, category_index] = 4
+        category_mask[:, category_index] = 4 #category index change for assessing different key points out of 24
 
         loss = (output[0]*category_mask).sum()
         loss.backward()
