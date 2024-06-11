@@ -123,9 +123,21 @@ class ToTensor(object):
 
     def __call__(self, sample):
         image, landmarks = sample['image'], sample['landmarks']
-        image = image.transpose((2, 0, 1))
-        return {'image': torch.from_numpy(image),
+        #image = image.transpose((2, 0, 1))
+        image = torch.from_numpy(image.transpose((2, 0, 1))).float()
+        return {'image': image,
                 'landmarks': torch.from_numpy(landmarks)}
+class Normalize(object):
+    """Normalize the image in a sample."""
+
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, sample):
+        image, landmarks = sample['image'], sample['landmarks']
+        image = transforms.functional.normalize(image, mean=self.mean, std=self.std)
+        return {'image': image, 'landmarks': landmarks}
 class ZeroPadHeight(object):
     """Pad the height of the image with zeros to a given height."""
 
@@ -150,25 +162,30 @@ class ZeroPadHeight(object):
     
 def get_loader(args):
     if args.dataset == "facemap":
+        
         trainset = FaceLandmarksDataset(csv_file="./augmented_data/augmented_labels.csv",
                                            root_dir="./augmented_data/",
                                            transform=transforms.Compose([
-                                               ToTensor()
+                                               ToTensor(),
+                                               Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                                            ]))
         testset = FaceLandmarksDataset(csv_file="./augmented_data_test/augmented_labels.csv",
                                            root_dir="./augmented_data_test/",
                                            transform=transforms.Compose([
-                                               ToTensor()
+                                               ToTensor(),
+                                               Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                                            ]))
 
 
     train_loader = DataLoader(trainset,
                               batch_size=args.train_batch_size,
                               num_workers=4,
+                              shuffle=True,
                               pin_memory=True)
     test_loader = DataLoader(testset,
                              batch_size=args.eval_batch_size,
                              num_workers=4,
+                             #shuffle=True,
                              pin_memory=True) if testset is not None else None
 
     return train_loader, test_loader
