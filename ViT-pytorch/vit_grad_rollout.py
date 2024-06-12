@@ -11,7 +11,8 @@ def grad_rollout(attentions, gradients, discard_ratio):
     with torch.no_grad():
         for attention, grad in zip(attentions, gradients):                
             weights = grad
-            attention_heads_fused = (attention*weights).mean(axis=1)
+            attention_heads_fused = (attention*weights).max(axis=1)[0]#changed from attention_heads_fused = (attention*weights).mean(axis=1)
+            #attention_heads_fused = (attention*weights).mean(axis=1)
             attention_heads_fused[attention_heads_fused < 0] = 0
 
             # Drop the lowest attentions, but
@@ -36,7 +37,7 @@ def grad_rollout(attentions, gradients, discard_ratio):
     return mask    
 
 class VITAttentionGradRollout:
-    def __init__(self, model, attention_layer_name='attn_drop', discard_ratio=0.9):
+    def __init__(self, model, attention_layer_name='attn_drop', discard_ratio=0.9): #automatically applies a discard ratior of 0.9
         self.model = model
         self.discard_ratio = discard_ratio
         for name, module in self.model.named_modules():
@@ -56,8 +57,8 @@ class VITAttentionGradRollout:
     def __call__(self, input_tensor, category_index):
         self.model.zero_grad()
         output = self.model(input_tensor)
-        category_mask = torch.zeros(output[0].size())
-        category_mask[:, category_index] = 4 #category index change for assessing different key points out of 24
+        category_mask = torch.zeros(output[0].size()) #we make a vactor of 0s, in the next line we then keep all the zeros, except in the position for the category index we choose the main script, so if we choose keypoint 0, the subsequent vector would look like [1,0,0,0,0.....]
+        category_mask[:, category_index] = 1 
 
         loss = (output[0]*category_mask).sum()
         loss.backward()
