@@ -144,3 +144,13 @@ cython_debug/
 !/logs/
 !/output/
 .idea
+
+
+#Data
+data/facemap/data_No_NaN
+data/facemap
+facemap_manually manipulated
+FacemapDataBefore30July
+
+#Models
+output/test_checkpoint.pth
