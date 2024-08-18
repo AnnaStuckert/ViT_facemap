@@ -23,14 +23,6 @@ from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
-# Specify the path to the new working directory
-# new_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
-# new_directory = "/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch"
-
-
-# Change the working directory
-# os.chdir(new_directory)
-
 
 def save_predictions_to_csv(predictions, filepath):
     """
@@ -386,6 +378,7 @@ def train(args, model):
 
 
 def main():
+
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
@@ -502,7 +495,19 @@ def main():
         "0 (default value): dynamic loss scaling.\n"
         "Positive power of 2: static loss scaling value.\n",
     )
+    parser.add_argument(
+        "--root_directory",
+        type=str,
+        default=".",
+        help="Location of root directory (currently the ViT_pytorch folder)",
+    )
     args = parser.parse_args()
+
+    # Specify the path to the new working directory
+    new_directory = args.root_directory
+
+    # Change the working directory
+    os.chdir(new_directory)
 
     # Save argusments to a config file for model specification
     config_filename = f"config_{args.name}.yaml"
