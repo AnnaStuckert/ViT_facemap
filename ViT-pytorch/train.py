@@ -25,11 +25,11 @@ from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 # Specify the path to the new working directory
 # new_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
-new_directory = "/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch"
+# new_directory = "/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch"
 
 
 # Change the working directory
-os.chdir(new_directory)
+# os.chdir(new_directory)
 
 
 def save_predictions_to_csv(predictions, filepath):
@@ -298,6 +298,8 @@ def train(args, model):
     losses = AverageMeter()
     lossCurve = LossCurve()
     global_step, best_acc, best_loss = 0, 0, 1000000
+    first_eval_done = False  # Track if the first evaluation has been done
+
     while True:
         model.train()
         epoch_iterator = tqdm(
@@ -355,6 +357,11 @@ def train(args, model):
                     )
                     lossCurve.update(global_step, "validation_loss", loss_valid)
                     lossCurve.update(global_step, "validation_acc", accuracy)
+                    # Save the model after the first evaluation
+                    if not first_eval_done:
+                        save_model(args, model)
+                        first_eval_done = True
+                    # going forward, save the model every time accuracy improves
                     if best_acc < accuracy:
                         save_model(args, model)
                         best_acc = accuracy
