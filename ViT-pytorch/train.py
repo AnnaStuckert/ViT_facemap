@@ -126,7 +126,9 @@ def simple_accuracy(preds, labels):
 def save_model(args, model):
     model_to_save = model.module if hasattr(model, "module") else model
     # Adjust the filename format if needed
-    model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.pth" % args.name)
+    model_checkpoint = os.path.join(
+        args.output_dir, "%s_checkpoint.pth" % args.name
+    )  # consider changing to .pt instead https://stackoverflow.com/questions/59095824/what-is-the-difference-between-pt-pth-and-pwf-extentions-in-pytorch
 
     # Save the model state dictionary along with other necessary parameters using torch.save()
     torch.save(
@@ -140,7 +142,7 @@ def setup(args):
     # Prepare model
     config = CONFIGS[args.model_type]
 
-    num_classes = 24  # var 24
+    num_classes = 24  # var 24 / consider changing this to num?classes ) num?classes, and feed num?classes as an input argument to the function, and add a docstring saying num?classes is the number of keypoints to be tracked *x2 for xy coordinates()
 
     model = VisionTransformer(
         config, args.img_size, zero_head=True, num_classes=num_classes
@@ -241,7 +243,9 @@ def train(args, model):
         os.makedirs(args.output_dir, exist_ok=True)
         writer = SummaryWriter(log_dir=os.path.join("logs", args.name))
 
-    args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
+    args.train_batch_size = (
+        args.train_batch_size // args.gradient_accumulation_steps
+    )  # what does this line mean? dpoes it turn it into an epoch?
 
     # Prepare dataset
     train_loader, test_loader = get_loader(args)
@@ -251,7 +255,7 @@ def train(args, model):
         model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
     )
 
-    t_total = args.num_steps
+    t_total = args.num_steps  # here I could implement conversion to epochs
     if args.decay_type == "cosine":
         scheduler = WarmupCosineSchedule(
             optimizer, warmup_steps=args.warmup_steps, t_total=t_total
@@ -267,7 +271,7 @@ def train(args, model):
         )
         amp._amp_state.loss_scalers[0]._loss_scale = 2**20
 
-    # Distributed training
+    # Distributed training - #I think local rank is an attribute of how many GPUs you can run on, and -1 is CPU maybe (actually after looking further in cdode i DONT thinkt hat is the case)
     if args.local_rank != -1:
         model = DDP(
             model, message_size=250000000, gradient_predivide_factor=get_world_size()
@@ -292,7 +296,7 @@ def train(args, model):
     global_step, best_acc, best_loss = 0, 0, 1000000
     first_eval_done = False  # Track if the first evaluation has been done
 
-    while True:
+    while True:  # what is 'true'? model.train()=T?
         model.train()
         epoch_iterator = tqdm(
             train_loader,
@@ -301,9 +305,21 @@ def train(args, model):
             dynamic_ncols=True,
             disable=args.local_rank not in [-1, 0],
         )
+
         for step, batch in enumerate(epoch_iterator):
-            batch = tuple(batch[t].to(args.device) for t in batch)
-            x, y = batch
+            if args.device.type == "mps":
+                # For Mac silicon (MPS), ensure float32 is used explicitly
+                batch = tuple(
+                    batch[t].to(args.device, dtype=torch.float32) for t in batch
+                )
+            else:
+                # For other devices (CUDA or CPU), use the default type
+                batch = tuple(batch[t].to(args.device) for t in batch)
+
+            # for step, batch in enumerate(epoch_iterator):
+            #     # batch = tuple(batch[t].to(args.device) for t in batch) do this if not mac silicon
+            #     batch = tuple(batch[t].to(args.device, dtype=torch.float32) for t in batch)
+            x, y = batch  # what exactly does batch hold? try printing it!
             loss = model.forward(x.float(), y.float())
 
             if args.gradient_accumulation_steps > 1:
@@ -378,7 +394,6 @@ def train(args, model):
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
@@ -410,7 +425,6 @@ def main():
         type=str,
         help="The output directory where checkpoints will be written.",
     )
-
     parser.add_argument("--img_size", default=224, type=int, help="Resolution size")
     parser.add_argument(
         "--train_batch_size",
@@ -428,7 +442,6 @@ def main():
         help="Run prediction on validation set every so many steps."
         "Will always run one evaluation at the end of training.",
     )
-
     parser.add_argument(
         "--learning_rate",
         default=2e-4,
@@ -436,18 +449,21 @@ def main():
         help="The initial learning rate for SGD.",
     )
     parser.add_argument(
-        "--weight_decay", default=1e-2, type=float, help="Weight deay if we apply some."
+        "--weight_decay",
+        default=1e-2,
+        type=float,
+        help="Weight decay if we apply some.",
     )
     parser.add_argument(
         "--num_steps",
-        default=20,
+        default=5,
         type=int,
         help="Total number of training epochs to perform.",
-    )  # plateaus loss at around 1500 steps at current other
+    )
     parser.add_argument(
         "--decay_type",
         choices=["cosine", "linear"],
-        default="linear",  # changed from cosine as I believe this is what Yichen did
+        default="linear",
         help="How to decay the learning rate.",
     )
     parser.add_argument(
@@ -455,16 +471,15 @@ def main():
         default=1,
         type=int,
         help="Step of training to perform learning rate warmup for.",
-    )  # was 500
+    )
     parser.add_argument(
         "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
     )
-
     parser.add_argument(
         "--local_rank",
         type=int,
         default=-1,
-        help="local_rank for distributed training on gpus",
+        help="local_rank for distributed training on GPUs",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="random seed for initialization"
@@ -472,8 +487,8 @@ def main():
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
-        default=1,  # tried adjusting this from 1 to 25 to match Yichen
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
+        default=1,
+        help="Number of update steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
         "--fp16",
@@ -501,33 +516,51 @@ def main():
         default=".",
         help="Location of root directory (currently the ViT_pytorch folder)",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        choices=["cpu", "cuda", "mps"],
+        default="cpu",
+        help="Device to use for training: 'cpu', 'cuda', or 'mps'.",
+    )
     args = parser.parse_args()
 
-    # Specify the path to the new working directory
+    # Change the working directory if specified
     new_directory = args.root_directory
-
-    # Change the working directory
     os.chdir(new_directory)
 
-    # Save argusments to a config file for model specification
+    # Save arguments to a config file for model specification
     config_filename = f"config_{args.name}.yaml"
-
     import yaml
 
     with open(config_filename, "w") as outfile:
         yaml.dump(args, outfile, default_flow_style=False)
 
-    # Setup CUDA, GPU & distributed training
-    if args.local_rank == -1:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        args.n_gpu = torch.cuda.device_count()
-    else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
-        torch.cuda.set_device(args.local_rank)
-        device = torch.device("cuda", args.local_rank)
-        torch.distributed.init_process_group(
-            backend="nccl", timeout=timedelta(minutes=60)
-        )
-        args.n_gpu = 1
+    # Setup device: CUDA, MPS (Apple Silicon), or CPU
+    if args.device == "cuda":
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            args.n_gpu = torch.cuda.device_count()
+        else:
+            print("CUDA is not available. Falling back to CPU.")
+            device = torch.device("cpu")
+            args.n_gpu = 0
+    elif args.device == "mps":
+        if torch.backends.mps.is_available():
+            device = torch.device("mps")
+            args.n_gpu = 1
+        else:
+            print("MPS is not available. Falling back to CPU.")
+            device = torch.device("cpu")
+            args.n_gpu = 0
+    elif args.device == "cpu":
+        device = torch.device("cpu")
+        args.n_gpu = 0
+    else:
+        print(f"Unrecognized device type '{args.device}'. Falling back to CPU.")
+        device = torch.device("cpu")
+        args.n_gpu = 0
+
     args.device = device
 
     # Setup logging
