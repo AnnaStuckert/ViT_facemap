@@ -1,247 +1,549 @@
-import math
-import os
+# coding=utf-8
+from __future__ import absolute_import, division, print_function
 
+# Import necessary modules
+import argparse  # This line was missing
+import csv
+import logging
+import os
+import random
+from datetime import timedelta
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from scipy.ndimage import gaussian_filter
-from skimage import io, transform
-from skimage.transform import rotate
-from torchvision import transforms
+import torch.distributed as dist
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+from apex import amp  # For running on a GPU
+from apex.parallel.distributed import DistributedDataParallel as DDP
+from models.modeling import CONFIGS, VisionTransformer
+from utils.data_utils import get_loader
+from utils.dist_util import get_world_size
+from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 
-# Define augmentation classes
-class ZeroPadHeight(object):
-    """Pad the height of the image with zeros to a given height."""
+def save_predictions_to_csv(predictions, filepath):
+    """
+    Saves the predicted keypoints to a CSV file.
 
-    def __init__(self, output_height):
-        self.output_height = output_height
-
-    def __call__(self, sample):
-        image, landmarks = sample["image"], sample["landmarks"]
-
-        h, w = image.shape[:2]
-        new_h = self.output_height
-
-        pad_height = max(0, new_h - h)
-        top_padding = pad_height // 2
-        bottom_padding = pad_height - top_padding
-
-        image = np.pad(
-            image, ((top_padding, bottom_padding), (0, 0), (0, 0)), mode="constant"
-        )
-
-        landmarks = landmarks + [0, top_padding]  # Adjust landmarks for the top padding
-
-        return {"image": image, "landmarks": landmarks}
+    Args:
+        predictions (numpy.ndarray): The predictions to save.
+        filepath (str): The path to the file where predictions should be saved.
+    """
+    with open(filepath, "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["ImageID", "Predictions"])  # Writing header
+        for i, pred in enumerate(predictions):
+            writer.writerow([i, " ".join(map(str, pred))])
 
 
-# Define transform functions and options
-def rotate_rescale(rotation, img_height, img_size):
-    class RotateRescaleTransform:
-        def __init__(self):
-            self.rotation = transforms.RandomRotation(degrees=rotation)
-            self.zero_pad = ZeroPadHeight(img_height)
-            self.resize = transforms.Resize(img_size)
-
-        def __call__(self, sample):
-            image = sample["image"]
-            image = self.rotation(image)
-            sample["image"] = self.resize(
-                self.zero_pad({"image": image, "landmarks": sample["landmarks"]})[
-                    "image"
-                ]
-            )
-            return sample
-
-    return RotateRescaleTransform()
+logger = logging.getLogger(__name__)
 
 
-def flip_rescale(img_height, img_size):
-    class FlipRescaleTransform:
-        def __init__(self):
-            self.flip = transforms.RandomHorizontalFlip()
-            self.zero_pad = ZeroPadHeight(img_height)
-            self.resize = transforms.Resize(img_size)
+class LossCurve(object):
+    def __init__(self):
+        self.d_lossCurve = {
+            "steps": [],
+            "metric": [],
+            "training_loss": [],
+            "validation_loss": [],
+            "validation_acc": [],
+        }
 
-        def __call__(self, sample):
-            image = sample["image"]
-            image = self.flip(image)
-            sample["image"] = self.resize(
-                self.zero_pad({"image": image, "landmarks": sample["landmarks"]})[
-                    "image"
-                ]
-            )
-            return sample
-
-    return FlipRescaleTransform()
-
-
-def pad_rescale(img_height, img_size):
-    class PadRescaleTransform:
-        def __init__(self):
-            self.zero_pad = ZeroPadHeight(img_height)
-            self.resize = transforms.Resize(img_size)
-
-        def __call__(self, sample):
-            sample["image"] = self.resize(self.zero_pad(sample)["image"])
-            return sample
-
-    return PadRescaleTransform()
-
-
-def rotate_flip_rescale(rotation, img_height, img_size):
-    class RotateFlipRescaleTransform:
-        def __init__(self):
-            self.flip = transforms.RandomHorizontalFlip()
-            self.rotation = transforms.RandomRotation(degrees=rotation)
-            self.zero_pad = ZeroPadHeight(img_height)
-            self.resize = transforms.Resize(img_size)
-
-        def __call__(self, sample):
-            image = sample["image"]
-            image = self.flip(image)
-            image = self.rotation(image)
-            sample["image"] = self.resize(
-                self.zero_pad({"image": image, "landmarks": sample["landmarks"]})[
-                    "image"
-                ]
-            )
-            return sample
-
-    return RotateFlipRescaleTransform()
-
-
-def blur(img_height, img_size):
-    class BlurTransform:
-        def __init__(self):
-            self.blur = transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))
-            self.zero_pad = ZeroPadHeight(img_height)
-            self.resize = transforms.Resize(img_size)
-
-        def __call__(self, sample):
-            image = sample["image"]
-            image = self.blur(image)
-            sample["image"] = self.resize(
-                self.zero_pad({"image": image, "landmarks": sample["landmarks"]})[
-                    "image"
-                ]
-            )
-            return sample
-
-    return BlurTransform()
-
-
-transform_options = {
-    "rotate_rescale": rotate_rescale,
-    "flip_rescale": flip_rescale,
-    "pad_rescale": pad_rescale,
-    "rotate_flip_rescale": rotate_flip_rescale,
-    "blur": blur,
-}
-
-
-# Define the AugmentedFaceDataset class
-class AugmentedFaceDataset:
-    """Dataset class for loading, augmenting, and saving face images and their labels."""
-
-    def __init__(
-        self,
-        csv_file,
-        root_dir,
-        output_dir,
-        output_size=(846, 646),
-        transform_list=None,
-        transform_params=None,
+    def update(
+        self, step, metric, training_loss, validation_loss=None, validation_acc=None
     ):
-        # Load the CSV file, skipping the first two columns and first two rows
-        raw_data = pd.read_csv(csv_file, skiprows=2)
-        self.keypoint_names = raw_data.columns[
-            2:
-        ].tolist()  # Use keypoint names starting from the third column
-        self.face_frame = raw_data.iloc[:, 2:]  # Skip the first two columns
+        self.d_lossCurve["steps"].append(step)
+        self.d_lossCurve["metric"].append(metric)
+        self.d_lossCurve["training_loss"].append(training_loss)
+        if validation_loss is not None:
+            self.d_lossCurve["validation_loss"].append(validation_loss)
+        else:
+            self.d_lossCurve["validation_loss"].append(None)
+        if validation_acc is not None:
+            self.d_lossCurve["validation_acc"].append(validation_acc)
+        else:
+            self.d_lossCurve["validation_acc"].append(None)
 
-        self.root_dir = root_dir
-        self.output_dir = output_dir
-        self.output_size = output_size
-        self.transform_list = transform_list  # List of transform names
-        self.transform_params = (
-            transform_params or {}
-        )  # Dictionary of transform parameters
-        self._prepare_output_directory()
+    def save(self, fileName):
+        df = pd.DataFrame(self.d_lossCurve)
+        df.to_csv(fileName)
 
-    def __len__(self):
-        return len(self.face_frame)
+    def plot(self):
+        print("Data:", self.d_lossCurve)  # Debug print statement
+        colors = {
+            "training_loss": "blue",
+            "validation_loss": "orange",
+            "validation_acc": "green",
+        }  # Define colors for different metrics
+        for metric, color in colors.items():
+            indices = [
+                i for i, m in enumerate(self.d_lossCurve["metric"]) if m == metric
+            ]
+            print(f"Metric: {metric}, Indices: {indices}")  # Debug print statement
+            if indices:
+                steps = [self.d_lossCurve["steps"][i] for i in indices]
+                loss = [self.d_lossCurve[metric][i] for i in indices]
+                print(f"Steps: {steps}, Loss: {loss}")  # Debug print statement
+                plt.plot(steps, loss, label=f"{metric.capitalize()} Loss", color=color)
+        plt.xlabel("Steps")
+        plt.ylabel("Loss")
+        plt.title("Training Loss Curve")
+        plt.legend()
+        plt.show()
 
-    def apply_transforms_and_save(self):
-        """Apply the selected transforms and save the augmented data."""
-        d_augmented_labels_all = pd.DataFrame()
-        for idx in range(len(self)):
-            sample = self.__getitem__(
-                idx, apply_transform=True
-            )  # Get original sample with transformation
 
-            # Save augmented data
-            d_augmented_labels = self._save_augmented_data(
-                idx, sample, "_".join(self.transform_list)
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        if isinstance(val, (int, float)):
+            self.val = val
+            self.sum += val * n
+            self.count += n
+            self.avg = self.sum / self.count
+
+
+def simple_accuracy(preds, labels):
+    diff = preds - labels
+    diff_abs = np.abs(diff)
+    return (
+        diff_abs < 4
+    ).mean()  # Consider if accuracy can be refined so different cut offs for different points.
+
+
+def save_model(args, model):
+    model_to_save = model.module if hasattr(model, "module") else model
+    model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.pth" % args.name)
+
+    torch.save(
+        {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
+    )
+    logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
+
+
+def setup(args):
+    # Prepare model
+    config = CONFIGS[args.model_type]
+    num_classes = 24  # Number of keypoints to be tracked * 2 for xy coordinates
+
+    model = VisionTransformer(
+        config, args.img_size, zero_head=True, num_classes=num_classes
+    )
+    model.load_from(np.load(args.pretrained_dir))
+    model.to(args.device)
+    num_params = count_parameters(model)
+
+    logger.info("{}".format(config))
+    logger.info("Training parameters %s", args)
+    logger.info("Total Parameter: \t%2.1fM" % num_params)
+    return args, model
+
+
+def count_parameters(model):
+    params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return params / 1000000
+
+
+def set_seed(args):
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if args.n_gpu > 0:
+        torch.cuda.manual_seed_all(args.seed)
+
+
+def valid(args, model, writer, test_loader, global_step):
+    # Validation
+    eval_losses = AverageMeter()
+
+    logger.info("***** Running Validation *****")
+    logger.info("  Num steps = %d", len(test_loader))
+    logger.info("  Batch size = %d", args.eval_batch_size)
+
+    model.eval()
+    all_preds, all_label = [], []
+    epoch_iterator = tqdm(
+        test_loader,
+        desc="Validating... (loss=X.X)",
+        bar_format="{l_bar}{r_bar}",
+        dynamic_ncols=True,
+        disable=args.local_rank not in [-1, 0],
+    )
+    loss_fct = torch.nn.MSELoss()
+    for step, batch in enumerate(epoch_iterator):
+        batch = tuple(batch[t].to(args.device) for t in batch)
+        x, y = batch
+        with torch.no_grad():
+            logits = model(x)[0]
+            y = y.view(y.shape[0], 24)
+            eval_loss = loss_fct(logits, y)
+            eval_losses.update(eval_loss.item())
+
+        if len(all_preds) == 0:
+            all_preds.append(logits.detach().cpu().numpy())
+            all_label.append(y.detach().cpu().numpy())
+        else:
+            all_preds[0] = np.append(
+                all_preds[0], logits.detach().cpu().numpy(), axis=0
             )
-            d_augmented_labels_all = pd.concat(
-                [d_augmented_labels_all, d_augmented_labels]
-            )
+            all_label[0] = np.append(all_label[0], y.detach().cpu().numpy(), axis=0)
+        epoch_iterator.set_description("Validating... (loss=%2.5f)" % eval_losses.val)
 
-        d_augmented_labels_all.set_index("image_name").to_csv(
-            os.path.join(self.output_dir, "augmented_labels.csv")
+    all_preds, all_label = all_preds[0], all_label[0]
+    accuracy = simple_accuracy(all_preds, all_label)
+    loss = eval_losses.avg
+
+    logger.info("\n")
+    logger.info("Validation Results")
+    logger.info("Global Steps: %d" % global_step)
+    logger.info("Valid Loss: %2.5f" % eval_losses.avg)
+    logger.info("Valid Accuracy: %2.5f" % accuracy)
+
+    writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
+
+    return accuracy, loss
+
+
+def train(args, model):
+    """Train the model"""
+    if args.local_rank in [-1, 0]:
+        os.makedirs(args.output_dir, exist_ok=True)
+        writer = SummaryWriter(log_dir=os.path.join("logs", args.name))
+
+    # Prepare dataset
+    train_loader, test_loader = get_loader(args)
+
+    # Calculate total number of training steps
+    t_total = len(train_loader) // args.gradient_accumulation_steps * args.num_epochs
+
+    # Prepare optimizer and scheduler
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay
+    )
+
+    if args.decay_type == "cosine":
+        scheduler = WarmupCosineSchedule(
+            optimizer, warmup_steps=args.warmup_steps, t_total=t_total
+        )
+    else:
+        scheduler = WarmupLinearSchedule(
+            optimizer, warmup_steps=args.warmup_steps, t_total=t_total
         )
 
-    def __getitem__(self, idx, apply_transform=True):
-        # Get the filename from the third column (index 0 after skipping the first two columns)
-        img_filename = self.face_frame.iloc[idx, 0]
-        img_name = os.path.join(
-            self.root_dir, img_filename
-        )  # Construct full image path
-        print(f"Loading image from: {img_name}")  # Debugging line
-        image = io.imread(img_name)
-
-        # Extract landmark coordinates, assuming they start from column 3 onwards
-        landmarks = (
-            self.face_frame.iloc[idx, 1:].values.astype(np.float32).reshape(-1, 2)
+    if args.fp16:
+        model, optimizer = amp.initialize(
+            models=model, optimizers=optimizer, opt_level=args.fp16_opt_level
         )
-        sample = {"image": image, "landmarks": landmarks}
+        amp._amp_state.loss_scalers[0]._loss_scale = 2**20
 
-        if apply_transform and self.transform_list:
-            for transform_name in self.transform_list:
-                transform_func = transform_options[transform_name](
-                    **self.transform_params.get(transform_name, {})
+    if args.local_rank != -1:
+        model = DDP(
+            model, message_size=250000000, gradient_predivide_factor=get_world_size()
+        )
+
+    logger.info("***** Running training *****")
+    logger.info("  Num epochs = %d", args.num_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
+    logger.info(
+        "  Total train batch size (w. parallel, distributed & accumulation) = %d",
+        args.train_batch_size
+        * args.gradient_accumulation_steps
+        * (torch.distributed.get_world_size() if args.local_rank != -1 else 1),
+    )
+    logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
+
+    model.zero_grad()
+    set_seed(args)  # Added here for reproducibility
+    losses = AverageMeter()
+    lossCurve = LossCurve()
+    global_step, best_acc, best_loss = 0, 0, 1000000
+
+    for epoch in range(args.num_epochs):
+        model.train()
+        epoch_iterator = tqdm(
+            train_loader,
+            desc=f"Training Epoch {epoch + 1} of {args.num_epochs} (loss={losses.val})",
+            bar_format="{l_bar}{r_bar}",
+            dynamic_ncols=True,
+            disable=args.local_rank not in [-1, 0],
+        )
+
+        for step, batch in enumerate(epoch_iterator):
+            batch = tuple(batch[t].to(args.device) for t in batch)
+            x, y = batch
+            loss = model.forward(x.float(), y.float())
+
+            if args.gradient_accumulation_steps > 1:
+                loss = loss / args.gradient_accumulation_steps
+
+            if args.fp16:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
+
+            if (step + 1) % args.gradient_accumulation_steps == 0:
+                lossCurve.update(global_step, "training_loss", loss.item())
+                losses.update(loss.item() * args.gradient_accumulation_steps)
+                if args.fp16:
+                    torch.nn.utils.clip_grad_norm_(
+                        amp.master_params(optimizer), args.max_grad_norm
+                    )
+                else:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), args.max_grad_norm
+                    )
+                scheduler.step()
+                optimizer.step()
+                optimizer.zero_grad()
+                global_step += 1
+
+                epoch_iterator.set_description(
+                    f"Training Epoch {epoch + 1} (global_step={global_step}, loss={losses.val:.5f})"
                 )
-                sample = transform_func(sample)
+                if args.local_rank in [-1, 0]:
+                    writer.add_scalar(
+                        "train/loss", scalar_value=losses.val, global_step=global_step
+                    )
+                    writer.add_scalar(
+                        "train/lr",
+                        scalar_value=scheduler.get_lr()[0],
+                        global_step=global_step,
+                    )
+                if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
+                    accuracy, loss_valid = valid(
+                        args, model, writer, test_loader, global_step
+                    )
+                    lossCurve.update(global_step, "validation_loss", loss_valid)
+                    lossCurve.update(global_step, "validation_acc", accuracy)
+                    if best_acc < accuracy:
+                        save_model(args, model)
+                        best_acc = accuracy
+                    if best_loss > loss_valid:
+                        best_loss = loss_valid
+                    model.train()
 
-        return sample
+        losses.reset()
 
-    def _prepare_output_directory(self):
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+    if args.local_rank in [-1, 0]:
+        writer.close()
 
-    def _save_augmented_data(self, idx, sample, transform_name):
-        # Extract the original name directly from the first column of the CSV.
-        original_file_name = self.face_frame.iloc[idx, 0]
+    lossCurve.save("lossCurve.csv")
+    logger.info("Best Accuracy: \t%f" % best_acc)
+    logger.info("Best Loss (MSE): \t%f" % best_loss)
+    logger.info("End Training!")
+    lossCurve.plot()
 
-        # Generate the new filenames for the augmented image and CSV by appending the transform name
-        file_name_without_extension, file_extension = os.path.splitext(
-            original_file_name
+
+def main():
+    parser = argparse.ArgumentParser()
+    # Required parameters
+    parser.add_argument(
+        "--name", default="test", help="Name of this run. Used for monitoring."
+    )
+    parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
+    parser.add_argument(
+        "--model_type",
+        choices=[
+            "ViT-B_16",
+            "ViT-B_32",
+            "ViT-L_16",
+            "ViT-L_32",
+            "ViT-H_14",
+            "R50-ViT-B_16",
+        ],
+        default="ViT-B_16",
+        help="Which variant to use.",
+    )
+    parser.add_argument(
+        "--pretrained_dir",
+        type=str,
+        default="ViT-B_16.npz",
+        help="Where to search for pretrained ViT models.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        default="output",
+        type=str,
+        help="The output directory where checkpoints will be written.",
+    )
+    parser.add_argument("--img_size", default=224, type=int, help="Resolution size")
+    parser.add_argument(
+        "--train_batch_size",
+        default=20,
+        type=int,
+        help="Total batch size for training.",
+    )
+    parser.add_argument(
+        "--eval_batch_size", default=20, type=int, help="Total batch size for eval."
+    )
+    parser.add_argument(
+        "--eval_every",
+        default=1,
+        type=int,
+        help="Run prediction on validation set every so many steps."
+        "Will always run one evaluation at the end of training.",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        default=2e-4,
+        type=float,
+        help="The initial learning rate for SGD.",
+    )
+    parser.add_argument(
+        "--weight_decay",
+        default=1e-2,
+        type=float,
+        help="Weight decay if we apply some.",
+    )
+    parser.add_argument(
+        "--num_epochs",
+        default=2,  # Changed from num_steps to num_epochs
+        type=int,
+        help="Total number of training epochs to perform.",
+    )
+    parser.add_argument(
+        "--decay_type",
+        choices=["cosine", "linear"],
+        default="linear",
+        help="How to decay the learning rate.",
+    )
+    parser.add_argument(
+        "--warmup_steps",
+        default=5,
+        type=int,
+        help="Step of training to perform learning rate warmup for.",
+    )
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="local_rank for distributed training on GPUs",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="random seed for initialization"
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="Number of update steps to accumulate before performing a backward/update pass.",
+    )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Whether to use 16-bit float precision instead of 32-bit",
+    )
+    parser.add_argument(
+        "--fp16_opt_level",
+        type=str,
+        default="O2",
+        help="For fp16: Apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
+        "See details at https://nvidia.github.io/apex/amp.html",
+    )
+    parser.add_argument(
+        "--loss_scale",
+        type=float,
+        default=0,
+        help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
+        "0 (default value): dynamic loss scaling.\n"
+        "Positive power of 2: static loss scaling value.\n",
+    )
+    parser.add_argument(
+        "--root_directory",
+        type=str,
+        default=".",
+        help="Location of root directory (currently the ViT_pytorch folder)",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        choices=["cpu", "cuda", "mps"],
+        default="cpu",
+        help="Device to use for training: 'cpu', 'cuda', or 'mps'.",
+    )
+    args = parser.parse_args()
+
+    # Change the working directory if specified
+    new_directory = args.root_directory
+    os.chdir(new_directory)
+
+    # Save arguments to a config file for model specification
+    config_filename = f"config_{args.name}.yaml"
+    import yaml
+
+    with open(config_filename, "w") as outfile:
+        yaml.dump(vars(args), outfile, default_flow_style=False)
+
+    # Setup device: CUDA, MPS (Apple Silicon), or CPU
+    if args.device == "cuda":
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            args.n_gpu = torch.cuda.device_count()
+        else:
+            print("CUDA is not available. Falling back to CPU.")
+            device = torch.device("cpu")
+            args.n_gpu = 0
+    elif args.device == "mps":
+        if torch.backends.mps.is_available():
+            device = torch.device("mps")
+            args.n_gpu = 1
+        else:
+            print("MPS is not available. Falling back to CPU.")
+            device = torch.device("cpu")
+            args.n_gpu = 0
+    elif args.device == "cpu":
+        device = torch.device("cpu")
+        args.n_gpu = 0
+    else:
+        print(f"Unrecognized device type '{args.device}'. Falling back to CPU.")
+        device = torch.device("cpu")
+        args.n_gpu = 0
+
+    args.device = device
+
+    # Setup logging
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+    )
+    logger.warning(
+        "Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s"
+        % (
+            args.local_rank,
+            args.device,
+            args.n_gpu,
+            bool(args.local_rank != -1),
+            args.fp16,
         )
+    )
 
-        augmented_image_filename = (
-            f"{file_name_without_extension}_{transform_name}_augmented.jpg"
-        )
+    # Set seed
+    set_seed(args)
 
-        # Full paths for the augmented files
-        augmented_image_path = os.path.join(self.output_dir, augmented_image_filename)
+    # Model & Tokenizer Setup
+    args, model = setup(args)
 
-        # Save the augmented image. Ensure the image data is in the correct format (e.g., scale to 255 if necessary).
-        io.imsave(augmented_image_path, (sample["image"] * 255).astype(np.uint8))
+    # Training
+    train(args, model)
 
-        # Save the landmarks (augmented labels) in a CSV file.
-        d_augmented_labels = pd.DataFrame(sample["landmarks"].flatten()).transpose()
-        d_augmented_labels.columns = self.keypoint_names
-        d_augmented_labels["image_name"] = augmented_image_filename
-        return d_augmented_labels
+
+if __name__ == "__main__":
+    main()
