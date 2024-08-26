@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from PIL import Image
-from skimage import io
+from PIL import Image, UnidentifiedImageError
 from torchvision import transforms
 
 
@@ -159,8 +158,14 @@ class AugmentedFaceDataset:
         if not os.path.exists(img_name):
             raise FileNotFoundError(f"No such file: '{img_name}'")
 
-        image = io.imread(img_name)
-        image = Image.fromarray(image)  # Convert NumPy array to PIL image
+        try:
+            image = Image.open(img_name).convert(
+                "RGB"
+            )  # Use PIL to open the image and convert to RGB
+        except (IOError, UnidentifiedImageError) as e:
+            print(f"Error opening image {img_name}: {e}")
+            raise
+
         landmarks = self.face_frame.iloc[idx, 3:].values.reshape(
             -1, 2
         )  # Adjusted to start from the fourth column for landmarks
@@ -197,9 +202,7 @@ class AugmentedFaceDataset:
         )
         augmented_image_path = os.path.join(self.output_dir, augmented_image_filename)
 
-        io.imsave(
-            augmented_image_path, np.array(sample["image"])
-        )  # Convert PIL image back to NumPy array for saving
+        sample["image"].save(augmented_image_path)  # Save PIL image directly
 
         d_augmented_labels = pd.DataFrame(sample["landmarks"].flatten()).transpose()
         d_augmented_labels.columns = self.face_frame.columns[
