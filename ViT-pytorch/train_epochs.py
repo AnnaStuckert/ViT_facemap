@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 class LossCurve(object):
     def __init__(self):
         self.d_lossCurve = {
+            "epoch": [],  # Added epoch field
             "steps": [],
             "metric": [],
             "training_loss": [],
@@ -54,8 +55,15 @@ class LossCurve(object):
         }
 
     def update(
-        self, step, metric, training_loss, validation_loss=None, validation_acc=None
+        self,
+        epoch,
+        step,
+        metric,
+        training_loss,
+        validation_loss=None,
+        validation_acc=None,
     ):
+        self.d_lossCurve["epoch"].append(epoch)  # Record the epoch
         self.d_lossCurve["steps"].append(step)
         self.d_lossCurve["metric"].append(metric)
         self.d_lossCurve["training_loss"].append(training_loss)
@@ -206,6 +214,17 @@ def valid(args, model, writer, test_loader, global_step):
     accuracy = simple_accuracy(all_preds, all_label)
     loss = eval_losses.avg
 
+    d_preds = pd.DataFrame(all_preds)
+    d_labels = pd.DataFrame(all_label)
+
+    image_names = pd.read_csv("augmented_data_test/augmented_labels.csv")
+
+    d_preds["image_names"] = image_names["image_name"]
+    d_labels["image_names"] = image_names["image_name"]
+
+    d_preds.to_csv("predictions.csv")
+    d_labels.to_csv("labels.csv")
+
     logger.info("\n")
     logger.info("Validation Results")
     logger.info("Global Steps: %d" % global_step)
@@ -296,7 +315,6 @@ def train(args, model):
                 loss.backward()
 
             if (step + 1) % args.gradient_accumulation_steps == 0:
-                lossCurve.update(global_step, "training_loss", loss.item())
                 losses.update(loss.item() * args.gradient_accumulation_steps)
                 if args.fp16:
                     torch.nn.utils.clip_grad_norm_(
@@ -323,25 +341,27 @@ def train(args, model):
                         scalar_value=scheduler.get_lr()[0],
                         global_step=global_step,
                     )
-                if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy, loss_valid = valid(
-                        args, model, writer, test_loader, global_step
-                    )
-                    lossCurve.update(global_step, "validation_loss", loss_valid)
-                    lossCurve.update(global_step, "validation_acc", accuracy)
-                    if best_acc < accuracy:
-                        save_model(args, model)
-                        best_acc = accuracy
-                    if best_loss > loss_valid:
-                        best_loss = loss_valid
-                    model.train()
 
+        # Run validation and log results at the end of the epoch
+        if args.local_rank in [-1, 0]:
+            accuracy, loss_valid = valid(args, model, writer, test_loader, global_step)
+            lossCurve.update(epoch + 1, global_step, "training_loss", losses.avg)
+            lossCurve.update(epoch + 1, global_step, "validation_loss", loss_valid)
+            lossCurve.update(epoch + 1, global_step, "validation_acc", accuracy)
+            if best_acc < accuracy:
+                save_model(args, model)
+                best_acc = accuracy
+            if best_loss > loss_valid:
+                best_loss = loss_valid
+            model.train()
+
+        # Save loss curve after each epoch
+        lossCurve.save("lossCurve.csv")
         losses.reset()
 
     if args.local_rank in [-1, 0]:
         writer.close()
 
-    lossCurve.save("lossCurve.csv")
     logger.info("Best Accuracy: \t%f" % best_acc)
     logger.info("Best Loss (MSE): \t%f" % best_loss)
     logger.info("End Training!")
@@ -392,7 +412,7 @@ def main():
     )
     parser.add_argument(
         "--eval_every",
-        default=1,
+        default=100,
         type=int,
         help="Run prediction on validation set every so many steps."
         "Will always run one evaluation at the end of training.",
@@ -411,7 +431,7 @@ def main():
     )
     parser.add_argument(
         "--num_epochs",
-        default=2,  # Changed from num_steps to num_epochs
+        default=50,  # Changed from num_steps to num_epochs
         type=int,
         help="Total number of training epochs to perform.",
     )
@@ -423,7 +443,7 @@ def main():
     )
     parser.add_argument(
         "--warmup_steps",
-        default=5,
+        default=500,
         type=int,
         help="Step of training to perform learning rate warmup for.",
     )
