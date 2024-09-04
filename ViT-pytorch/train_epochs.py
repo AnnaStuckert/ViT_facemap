@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.distributed as dist
+import wandb
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -141,6 +142,7 @@ def simple_accuracy(preds, labels):
 def save_model(args, model):
     model_to_save = model.module if hasattr(model, "module") else model
     model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.pth" % args.name)
+    wandb.save(model_checkpoint)
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
@@ -372,6 +374,18 @@ def train(args, model):
             lossCurve.update(epoch + 1, global_step, "validation_acc", accuracy)
             lossCurve.update(epoch + 1, global_step, "avg_pck", avg_pck)
             lossCurve.update(epoch + 1, global_step, "avg_rmse", avg_rmse)
+
+            # Log validation metrics with W&B
+            wandb.log(
+                {
+                    "validation_loss": loss_valid,
+                    "validation_accuracy": accuracy,
+                    "average_pck": avg_pck,
+                    "average_rmse": avg_rmse,
+                    "epoch": epoch + 1,
+                    "global_step": global_step,
+                }
+            )
             # TODO update model saving not using accuracy but PCK or RMSE
             if best_acc < accuracy:
                 save_model(args, model)
@@ -580,6 +594,9 @@ def main():
         )
     )
 
+    # Initialize W&B
+    wandb.init(project="your_project_name_test", name=args.name, config=vars(args))
+
     # Set seed
     set_seed(args)
 
@@ -588,6 +605,9 @@ def main():
 
     # Training
     train(args, model)
+
+    # Finish wandb logging
+    wandb.finish()
 
 
 if __name__ == "__main__":
