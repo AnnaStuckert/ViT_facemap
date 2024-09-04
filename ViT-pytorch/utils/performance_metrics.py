@@ -19,7 +19,11 @@ def calculate_pck(labels, preds, alpha=0.2, reference_points=(4, 5)):
 
     # Number of keypoints
     num_keypoints = 12  # 24 / 2
-    keypoints_columns = list(range(1, 25))  # Columns from index 1 to 24
+    # works in the csv files
+    # keypoints_columns = list(range(1, 25))  # Columns from index 1 to 24
+
+    # maybe works in train_epochs
+    keypoints_columns = list(range(0, 24))  # Columns from index 1 to 24
 
     # Check for correct format
     if "image_names" not in labels.columns or "image_names" not in preds.columns:
@@ -32,6 +36,7 @@ def calculate_pck(labels, preds, alpha=0.2, reference_points=(4, 5)):
 
     for _, row in labels.iterrows():
         image_name = row["image_names"]
+        # print(keypoints_columns)
         keypoints_data = row[keypoints_columns].values
 
         try:
@@ -109,7 +114,8 @@ def calculate_rmse(labels, preds):
 
     # Number of keypoints
     num_keypoints = 12  # 24 / 2
-    keypoints_columns = list(range(1, 25))  # Columns from index 1 to 24
+    # keypoints_columns = list(range(1, 25))  # Columns from index 1 to 24
+    keypoints_columns = list(range(0, 24))  # Columns from index 1 to 24
 
     # Check for correct format
     if "image_names" not in labels.columns or "image_names" not in preds.columns:

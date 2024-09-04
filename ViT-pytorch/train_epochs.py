@@ -22,6 +22,12 @@ from apex.parallel.distributed import DistributedDataParallel as DDP
 from models.modeling import CONFIGS, VisionTransformer
 from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
+from utils.performance_metrics import (
+    average_pck,
+    average_rmse,
+    calculate_pck,
+    calculate_rmse,
+)
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
 
 
@@ -221,6 +227,16 @@ def valid(args, model, writer, test_loader, global_step):
 
     d_preds["image_names"] = image_names["image_name"]
     d_labels["image_names"] = image_names["image_name"]
+    print(d_preds)
+    print(d_labels)
+
+    pck_results = calculate_pck(
+        labels=d_labels, preds=d_preds, alpha=0.1, reference_points=(1, 3)
+    )  # Adjust alpha and reference points as needed - this should be part of the input argument
+    avg_pck = average_pck(pck_results)
+
+    rmse_results = calculate_rmse(labels=d_labels, preds=d_preds)
+    avg_rmse = average_rmse(rmse_results)
 
     d_preds.to_csv("predictions.csv")
     d_labels.to_csv("labels.csv")
@@ -230,10 +246,14 @@ def valid(args, model, writer, test_loader, global_step):
     logger.info("Global Steps: %d" % global_step)
     logger.info("Valid Loss: %2.5f" % eval_losses.avg)
     logger.info("Valid Accuracy: %2.5f" % accuracy)
+    logger.info("Average PCK: %2.5f" % avg_pck)
+    logger.info("Average RMSE: %2.5f" % avg_rmse)
 
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
+    writer.add_scalar("test/avg_pck", scalar_value=avg_pck, global_step=global_step)
+    writer.add_scalar("test/avg_rmse", scalar_value=avg_rmse, global_step=global_step)
 
-    return accuracy, loss
+    return accuracy, loss, avg_pck, avg_rmse
 
 
 def train(args, model):
@@ -344,10 +364,15 @@ def train(args, model):
 
         # Run validation and log results at the end of the epoch
         if args.local_rank in [-1, 0]:
-            accuracy, loss_valid = valid(args, model, writer, test_loader, global_step)
+            accuracy, loss_valid, avg_pck, avg_rmse = valid(
+                args, model, writer, test_loader, global_step
+            )
             lossCurve.update(epoch + 1, global_step, "training_loss", losses.avg)
             lossCurve.update(epoch + 1, global_step, "validation_loss", loss_valid)
             lossCurve.update(epoch + 1, global_step, "validation_acc", accuracy)
+            lossCurve.update(epoch + 1, global_step, "avg_pck", avg_pck)
+            lossCurve.update(epoch + 1, global_step, "avg_rmse", avg_rmse)
+            # TODO update model saving not using accuracy but PCK or RMSE
             if best_acc < accuracy:
                 save_model(args, model)
                 best_acc = accuracy
