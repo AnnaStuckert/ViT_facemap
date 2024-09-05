@@ -389,20 +389,19 @@ def train(args, model):
                     "global_step": global_step,
                 }
             )
-            save_model(args, model)
-#            # TODO update model saving not using accuracy but PCK or RMSE
- #           if (
-  #              best_acc < accuracy
-   #         ):  # accuracy should be higher than the existing accuracy to save
-    #            # save_model(args, model)
-     #           best_acc = accuracy
-      #      if best_loss > loss_valid:
-       #         best_loss = loss_valid
-        #    # this should replace best_acc when
-         #   if best_rmse > avg_rmse:
-          #      save_model(args, model)
-          #      best_rmse = avg_rmse
-          #  model.train()
+            # TODO update model saving not using accuracy but PCK or RMSE
+            if (
+                best_acc < accuracy
+            ):  # accuracy should be higher than the existing accuracy to save
+                # save_model(args, model)
+                best_acc = accuracy
+            if best_loss > loss_valid:
+                best_loss = loss_valid
+            # this should replace best_acc when I am sure avg_rmse is calculated over entire validation, not just last instance
+            if best_rmse > avg_rmse:
+                save_model(args, model)
+                best_rmse = avg_rmse
+            model.train()
 
         # Save loss curve after each epoch
         lossCurve.save("lossCurve.csv")
