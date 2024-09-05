@@ -14,10 +14,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.distributed as dist
-import wandb
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+import wandb
 from apex import amp  # For running on a GPU
 from apex.parallel.distributed import DistributedDataParallel as DDP
 from models.modeling import CONFIGS, VisionTransformer
@@ -142,7 +142,8 @@ def simple_accuracy(preds, labels):
 def save_model(args, model):
     model_to_save = model.module if hasattr(model, "module") else model
     model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.pth" % args.name)
-    wandb.save(model_checkpoint)
+    # model.save(os.path.join(wandb.run.dir, "test.h5"))
+    # wandb.save("test.h5")
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
@@ -310,7 +311,7 @@ def train(args, model):
     set_seed(args)  # Added here for reproducibility
     losses = AverageMeter()
     lossCurve = LossCurve()
-    global_step, best_acc, best_loss = 0, 0, 1000000
+    global_step, best_acc, best_rmse, best_loss = 0, 0, 1000000, 1000000
 
     for epoch in range(args.num_epochs):
         model.train()
@@ -387,11 +388,17 @@ def train(args, model):
                 }
             )
             # TODO update model saving not using accuracy but PCK or RMSE
-            if best_acc < accuracy:
-                save_model(args, model)
+            if (
+                best_acc < accuracy
+            ):  # accuracy should be higher than the existing accuracy to save
+                # save_model(args, model)
                 best_acc = accuracy
             if best_loss > loss_valid:
                 best_loss = loss_valid
+            # this should replace best_acc when
+            if best_rmse > avg_rmse:
+                save_model(args, model)
+                best_rmse = avg_rmse
             model.train()
 
         # Save loss curve after each epoch
@@ -595,7 +602,10 @@ def main():
     )
 
     # Initialize W&B
-    wandb.init(project="your_project_name_test", name=args.name, config=vars(args))
+    config_file = CONFIGS[args.model_type]
+    wandb.init(
+        project="your_project_name_test5", name=args.name, config=config_file
+    )  # removed config=vars(args) - config = CONFIGS[args.model_type]
 
     # Set seed
     set_seed(args)
