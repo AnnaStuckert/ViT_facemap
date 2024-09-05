@@ -142,13 +142,15 @@ def simple_accuracy(preds, labels):
 def save_model(args, model):
     model_to_save = model.module if hasattr(model, "module") else model
     model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.pth" % args.name)
-    # model.save(os.path.join(wandb.run.dir, "test.h5"))
-    # wandb.save("test.h5")
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
     )
     logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
+
+    # upload model to wandb
+    wandb.save(model_checkpoint)
+
 
 
 def setup(args):
@@ -387,19 +389,20 @@ def train(args, model):
                     "global_step": global_step,
                 }
             )
-            # TODO update model saving not using accuracy but PCK or RMSE
-            if (
-                best_acc < accuracy
-            ):  # accuracy should be higher than the existing accuracy to save
-                # save_model(args, model)
-                best_acc = accuracy
-            if best_loss > loss_valid:
-                best_loss = loss_valid
-            # this should replace best_acc when
-            if best_rmse > avg_rmse:
-                save_model(args, model)
-                best_rmse = avg_rmse
-            model.train()
+            save_model(args, model)
+#            # TODO update model saving not using accuracy but PCK or RMSE
+ #           if (
+  #              best_acc < accuracy
+   #         ):  # accuracy should be higher than the existing accuracy to save
+    #            # save_model(args, model)
+     #           best_acc = accuracy
+      #      if best_loss > loss_valid:
+       #         best_loss = loss_valid
+        #    # this should replace best_acc when
+         #   if best_rmse > avg_rmse:
+          #      save_model(args, model)
+          #      best_rmse = avg_rmse
+          #  model.train()
 
         # Save loss curve after each epoch
         lossCurve.save("lossCurve.csv")
@@ -418,7 +421,7 @@ def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
-        "--name", default="test", help="Name of this run. Used for monitoring."
+        "--name", default="test_test", help="Name of this run. Used for monitoring."
     )
     parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
     parser.add_argument(
@@ -541,7 +544,7 @@ def main():
         "--device",
         type=str,
         choices=["cpu", "cuda", "mps"],
-        default="cpu",
+        default="cuda",
         help="Device to use for training: 'cpu', 'cuda', or 'mps'.",
     )
     args = parser.parse_args()
