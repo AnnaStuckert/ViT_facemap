@@ -460,7 +460,7 @@ def main():
         "--eval_batch_size", default=20, type=int, help="Total batch size for eval."
     )
     parser.add_argument(
-        "--eval_every",
+        "--eval_every", # is the relevant anymore if I evaluate after each epoch?
         default=100,
         type=int,
         help="Run prediction on validation set every so many steps."

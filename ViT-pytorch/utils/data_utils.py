@@ -9,6 +9,10 @@ from torchvision.io import read_image
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, Dataset, RandomSampler, DistributedSampler, SequentialSampler
 
+#def set_wd(args):
+#    new_working_directory = args.root_directory
+#    os.chdir(new_working_directory)
+
 # Specify the path to the new working directory
 new_working_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
 
@@ -163,19 +167,18 @@ class ZeroPadHeight(object):
 def get_loader(args):
     if args.dataset == "facemap":
         
-        trainset = FaceLandmarksDataset(csv_file="./augmented_data/augmented_labels.csv",
-                                           root_dir="./augmented_data/",
+        trainset = FaceLandmarksDataset(csv_file="./data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+                                           root_dir="./data/facemap/NaN_removed/train/augmented_data/",
                                            transform=transforms.Compose([
                                                ToTensor(),
                                                Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                                            ]))
-        testset = FaceLandmarksDataset(csv_file="./augmented_data_test/augmented_labels.csv",
-                                           root_dir="./augmented_data_test/",
+        testset = FaceLandmarksDataset(csv_file="./data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+                                           root_dir="./data/facemap/NaN_removed/test/augmented_data/",
                                            transform=transforms.Compose([
                                                ToTensor(),
                                                Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                                            ]))
-
 
     train_loader = DataLoader(trainset,
                               batch_size=args.train_batch_size,
