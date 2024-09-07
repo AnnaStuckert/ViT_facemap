@@ -147,10 +147,14 @@ cython_debug/
 
 
 #Data
-data/facemap/data_No_NaN
-data/facemap
+#data/facemap/data_No_NaN
+#data/facemap
 facemap_manually manipulated
 FacemapDataBefore30July
+Facemap_videos
+data/facemap.zip
+
+
 
 #Models
 output/test_checkpoint.pth
