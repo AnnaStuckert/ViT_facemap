@@ -451,8 +451,8 @@ def main():
     parser.add_argument(
         "--pretrained_dir",
         type=str,
-        default="ViT-B_16.npz",
-        help="Where to search for pretrained ViT models.",
+        default=os.path.join(current_dir, "model_files", "ViT-B_16.npz"),
+        help="Path to the pretrained ViT model file in the model_files directory.",
     )
     parser.add_argument(
         "--output_dir",
@@ -606,8 +606,8 @@ def main():
     args = parser.parse_args()
 
     # Change the working directory if specified
-    new_directory = args.root_directory
-    os.chdir(new_directory)
+    # new_directory = args.root_directory
+    # os.chdir(new_directory)
 
     # Save arguments to a config file for model specification
     config_filename = f"config_{args.name}.yaml"
