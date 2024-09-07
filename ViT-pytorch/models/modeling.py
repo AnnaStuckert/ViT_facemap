@@ -327,7 +327,7 @@ class VisionTransformer(nn.Module):
 
         if labels is not None:
             loss_fct = MSELoss()
-            labels = labels.view(labels.shape[0], self.num_classes)
+            labels = labels.view(labels.shape[0], self.num_KPs)
             loss = loss_fct(logits.view(-1), labels.view(-1))
             return loss
         else:

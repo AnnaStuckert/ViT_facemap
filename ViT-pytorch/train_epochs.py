@@ -141,8 +141,11 @@ def simple_accuracy(preds, labels):
 
 def save_model(args, model, epoch):
     model_to_save = model.module if hasattr(model, "module") else model
+#    model_checkpoint = os.path.join(
+ #       args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
+  #  )
     model_checkpoint = os.path.join(
-        args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
+        args.output_dir, f"{args.name}_testing20240907.pth"
     )
 
     torch.save(
@@ -228,7 +231,7 @@ def valid(args, model, writer, test_loader, global_step):
     d_preds = pd.DataFrame(all_preds)
     d_labels = pd.DataFrame(all_label)
 
-    image_names = pd.read_csv("augmented_data_test/augmented_labels.csv")
+    image_names = pd.read_csv(args.test_csv_file)
 
     d_preds["image_names"] = image_names["image_name"]
     d_labels["image_names"] = image_names["image_name"]
@@ -609,10 +612,6 @@ def main():
         help="Number of keypoints to predict. This will be multiplied with 2 in the algorithm to account for x,y coordinates of each KP. Thus enter the number of KPs where both x and y coordinate is accounted for so 12 KP = 24 coodinates, x and y for each KP, then enter 12",
     )
     args = parser.parse_args()
-
-    # Change the working directory if specified
-    # new_directory = args.root_directory
-    # os.chdir(new_directory)
 
     # Save arguments to a config file for model specification
     config_filename = f"config_{args.name}.yaml"
