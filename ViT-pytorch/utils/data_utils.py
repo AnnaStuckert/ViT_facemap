@@ -1,31 +1,38 @@
 import logging
+import os
+
+import numpy as np
 import pandas as pd
 import torch
-import os
 from skimage import io, transform
-import numpy as np
+from torch.utils.data import (
+    DataLoader,
+    Dataset,
+    DistributedSampler,
+    RandomSampler,
+    SequentialSampler,
+)
+from torchvision import datasets, transforms
 from torchvision.io import read_image
 
-from torchvision import transforms, datasets
-from torch.utils.data import DataLoader, Dataset, RandomSampler, DistributedSampler, SequentialSampler
-
-#def set_wd(args):
+# def set_wd(args):
 #    new_working_directory = args.root_directory
 #    os.chdir(new_working_directory)
 
 # Specify the path to the new working directory
-new_working_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
+# new_working_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
 
 # Change the working directory
-os.chdir(new_working_directory)
+# os.chdir(new_working_directory)
 
 
 logger = logging.getLogger(__name__)
 
+
 class FaceLandmarksDataset(Dataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, root_dir, csv_file, transform=None): 
+    def __init__(self, root_dir, csv_file, transform=None):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -40,20 +47,20 @@ class FaceLandmarksDataset(Dataset):
     def __len__(self):
         return len(self.landmarks_frame)
 
-
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        img_name = os.path.join(self.root_dir,self.landmarks_frame.iloc[idx, 0])
+        img_name = os.path.join(self.root_dir, self.landmarks_frame.iloc[idx, 0])
         image = io.imread(img_name)
         landmarks = self.landmarks_frame.iloc[idx, 1:]
         landmarks = np.array([landmarks], dtype=float).reshape(-1, 2)
-        sample = {'image': image, 'landmarks': landmarks}
+        sample = {"image": image, "landmarks": landmarks}
 
         if self.transform:
             sample = self.transform(sample)
 
         return sample
+
 
 class Rescale(object):
     """Rescale the image in a sample to a given size.
@@ -69,7 +76,7 @@ class Rescale(object):
         self.output_size = output_size
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['landmarks']
+        image, landmarks = sample["image"], sample["landmarks"]
 
         h, w = image.shape[:2]
         if isinstance(self.output_size, int):
@@ -86,7 +93,7 @@ class Rescale(object):
 
         landmarks = landmarks * [new_w / w, new_h / h]
 
-        return {'image': img, 'landmarks': landmarks}
+        return {"image": img, "landmarks": landmarks}
 
 
 class RandomCrop(object):
@@ -106,7 +113,7 @@ class RandomCrop(object):
             self.output_size = output_size
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['landmarks']
+        image, landmarks = sample["image"], sample["landmarks"]
 
         h, w = image.shape[:2]
         new_h, new_w = self.output_size
@@ -114,23 +121,23 @@ class RandomCrop(object):
         top = np.random.randint(0, h - new_h + 1)
         left = np.random.randint(0, w - new_w + 1)
 
-        image = image[top: top + new_h,
-                      left: left + new_w]
+        image = image[top : top + new_h, left : left + new_w]
 
         landmarks = landmarks - [left, top]
 
-        return {'image': image, 'landmarks': landmarks}
+        return {"image": image, "landmarks": landmarks}
 
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['landmarks']
-        #image = image.transpose((2, 0, 1))
+        image, landmarks = sample["image"], sample["landmarks"]
+        # image = image.transpose((2, 0, 1))
         image = torch.from_numpy(image.transpose((2, 0, 1))).float()
-        return {'image': image,
-                'landmarks': torch.from_numpy(landmarks)}
+        return {"image": image, "landmarks": torch.from_numpy(landmarks)}
+
+
 class Normalize(object):
     """Normalize the image in a sample."""
 
@@ -139,9 +146,11 @@ class Normalize(object):
         self.std = std
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['landmarks']
+        image, landmarks = sample["image"], sample["landmarks"]
         image = transforms.functional.normalize(image, mean=self.mean, std=self.std)
-        return {'image': image, 'landmarks': landmarks}
+        return {"image": image, "landmarks": landmarks}
+
+
 class ZeroPadHeight(object):
     """Pad the height of the image with zeros to a given height."""
 
@@ -149,7 +158,7 @@ class ZeroPadHeight(object):
         self.output_height = output_height
 
     def __call__(self, sample):
-        image, landmarks = sample['image'], sample['landmarks']
+        image, landmarks = sample["image"], sample["landmarks"]
 
         h, w = image.shape[:2]
         new_h = self.output_height
@@ -158,37 +167,82 @@ class ZeroPadHeight(object):
         top_padding = pad_height // 2
         bottom_padding = pad_height - top_padding
 
-        image = np.pad(image, ((top_padding, bottom_padding), (0, 0), (0, 0)), mode='constant')
+        image = np.pad(
+            image, ((top_padding, bottom_padding), (0, 0), (0, 0)), mode="constant"
+        )
 
         landmarks = landmarks + [0, top_padding]  # Adjust landmarks for the top padding
 
-        return {'image': image, 'landmarks': landmarks}
-    
+        return {"image": image, "landmarks": landmarks}
+
+
+# def get_loader(args):
+#     if args.dataset == "facemap":
+
+#         trainset = FaceLandmarksDataset(
+#             csv_file="./data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+#             root_dir="./data/facemap/NaN_removed/train/augmented_data/",
+#             transform=transforms.Compose(
+#                 [
+#                     ToTensor(),
+#                     Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+#                 ]
+#             ),
+#         )
+#         testset = FaceLandmarksDataset(
+#             csv_file="./data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+#             root_dir="./data/facemap/NaN_removed/test/augmented_data/",
+#             transform=transforms.Compose(
+#                 [
+#                     ToTensor(),
+#                     Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+#                 ]
+#             ),
+#         )
+
+
 def get_loader(args):
     if args.dataset == "facemap":
-        
-        trainset = FaceLandmarksDataset(csv_file="./data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
-                                           root_dir="./data/facemap/NaN_removed/train/augmented_data/",
-                                           transform=transforms.Compose([
-                                               ToTensor(),
-                                               Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-                                           ]))
-        testset = FaceLandmarksDataset(csv_file="./data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
-                                           root_dir="./data/facemap/NaN_removed/test/augmented_data/",
-                                           transform=transforms.Compose([
-                                               ToTensor(),
-                                               Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-                                           ]))
+        # Dynamically load paths for training and testing data
+        trainset = FaceLandmarksDataset(
+            csv_file=args.train_csv_file,
+            root_dir=args.train_data_dir,
+            transform=transforms.Compose(
+                [
+                    ToTensor(),
+                    Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                ]
+            ),
+        )
 
-    train_loader = DataLoader(trainset,
-                              batch_size=args.train_batch_size,
-                              num_workers=4,
-                              shuffle=True,
-                              pin_memory=True)
-    test_loader = DataLoader(testset,
-                             batch_size=args.eval_batch_size,
-                             num_workers=4,
-                             #shuffle=True,
-                             pin_memory=True) if testset is not None else None
+        testset = FaceLandmarksDataset(
+            csv_file=args.test_csv_file,
+            root_dir=args.test_data_dir,
+            transform=transforms.Compose(
+                [
+                    ToTensor(),
+                    Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                ]
+            ),
+        )
+
+    train_loader = DataLoader(
+        trainset,
+        batch_size=args.train_batch_size,
+        num_workers=4,
+        shuffle=True,
+        pin_memory=True,
+    )
+    test_loader = (
+        DataLoader(
+            testset,
+            batch_size=args.eval_batch_size,
+            num_workers=4,
+            # shuffle=True,
+            pin_memory=True,
+        )
+        if testset is not None
+        else None
+    )
 
     return train_loader, test_loader

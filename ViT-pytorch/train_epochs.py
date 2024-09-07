@@ -556,6 +556,34 @@ def main():
         default="cuda",
         help="Device to use for training: 'cpu', 'cuda', or 'mps'.",
     )
+    parser.add_argument(
+        "--train_csv_file",
+        type=str,
+        # required=True,  #Use the required option when shifting completely to notebook or commandline based running of this script.
+        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+        help="Path to the training CSV file.",
+    )
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        # required=True,
+        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/train/augmented_data",
+        help="Directory containing training images.",
+    )
+    parser.add_argument(
+        "--test_csv_file",
+        type=str,
+        # required=True,
+        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+        help="Path to the testing CSV file.",
+    )
+    parser.add_argument(
+        "--test_data_dir",
+        type=str,
+        # required=True,
+        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/test/augmented_data",
+        help="Directory containing testing images.",
+    )
     args = parser.parse_args()
 
     # Change the working directory if specified
