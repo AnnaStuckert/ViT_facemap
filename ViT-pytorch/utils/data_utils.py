@@ -15,17 +15,6 @@ from torch.utils.data import (
 from torchvision import datasets, transforms
 from torchvision.io import read_image
 
-# def set_wd(args):
-#    new_working_directory = args.root_directory
-#    os.chdir(new_working_directory)
-
-# Specify the path to the new working directory
-# new_working_directory = "C:\\Users\\avs20\\Documents\\Github\\ViT_facemap\\ViT-pytorch"
-
-# Change the working directory
-# os.chdir(new_working_directory)
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -174,31 +163,6 @@ class ZeroPadHeight(object):
         landmarks = landmarks + [0, top_padding]  # Adjust landmarks for the top padding
 
         return {"image": image, "landmarks": landmarks}
-
-
-# def get_loader(args):
-#     if args.dataset == "facemap":
-
-#         trainset = FaceLandmarksDataset(
-#             csv_file="./data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
-#             root_dir="./data/facemap/NaN_removed/train/augmented_data/",
-#             transform=transforms.Compose(
-#                 [
-#                     ToTensor(),
-#                     Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-#                 ]
-#             ),
-#         )
-#         testset = FaceLandmarksDataset(
-#             csv_file="./data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
-#             root_dir="./data/facemap/NaN_removed/test/augmented_data/",
-#             transform=transforms.Compose(
-#                 [
-#                     ToTensor(),
-#                     Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-#                 ]
-#             ),
-#         )
 
 
 def get_loader(args):

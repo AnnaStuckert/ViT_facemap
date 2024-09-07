@@ -1,26 +1,29 @@
 # coding=utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import copy
 import logging
 import math
-
 from os.path import join as pjoin
 
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-
-from torch.nn import CrossEntropyLoss, MSELoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
-from torch.nn.modules.utils import _pair
 from scipy import ndimage
+from torch.nn import (
+    Conv2d,
+    CrossEntropyLoss,
+    Dropout,
+    LayerNorm,
+    Linear,
+    MSELoss,
+    Softmax,
+)
+from torch.nn.modules.utils import _pair
 
 import models.configs as configs
 
 from .modeling_resnet import ResNetV2
-
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,11 @@ def swish(x):
     return x * torch.sigmoid(x)
 
 
-ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
+ACT2FN = {
+    "gelu": torch.nn.functional.gelu,
+    "relu": torch.nn.functional.relu,
+    "swish": swish,
+}
 
 
 class Attention(nn.Module):
@@ -68,7 +75,10 @@ class Attention(nn.Module):
         self.softmax = Softmax(dim=-1)
 
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        new_x_shape = x.size()[:-1] + (
+            self.num_attention_heads,
+            self.attention_head_size,
+        )
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
@@ -122,8 +132,8 @@ class Mlp(nn.Module):
 
 
 class Embeddings(nn.Module):
-    """Construct the embeddings from patch, position embeddings.
-    """
+    """Construct the embeddings from patch, position embeddings."""
+
     def __init__(self, config, img_size, in_channels=3):
         super(Embeddings, self).__init__()
         self.hybrid = None
@@ -131,7 +141,10 @@ class Embeddings(nn.Module):
 
         if config.patches.get("grid") is not None:
             grid_size = config.patches["grid"]
-            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
+            patch_size = (
+                img_size[0] // 16 // grid_size[0],
+                img_size[1] // 16 // grid_size[1],
+            )
             n_patches = (img_size[0] // 16) * (img_size[1] // 16)
             self.hybrid = True
         else:
@@ -140,14 +153,20 @@ class Embeddings(nn.Module):
             self.hybrid = False
 
         if self.hybrid:
-            self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers,
-                                         width_factor=config.resnet.width_factor)
+            self.hybrid_model = ResNetV2(
+                block_units=config.resnet.num_layers,
+                width_factor=config.resnet.width_factor,
+            )
             in_channels = self.hybrid_model.width * 16
-        self.patch_embeddings = Conv2d(in_channels=in_channels,
-                                       out_channels=config.hidden_size,
-                                       kernel_size=patch_size,
-                                       stride=patch_size)
-        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches+1, config.hidden_size))
+        self.patch_embeddings = Conv2d(
+            in_channels=in_channels,
+            out_channels=config.hidden_size,
+            kernel_size=patch_size,
+            stride=patch_size,
+        )
+        self.position_embeddings = nn.Parameter(
+            torch.zeros(1, n_patches + 1, config.hidden_size)
+        )
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
@@ -192,15 +211,37 @@ class Block(nn.Module):
     def load_from(self, weights, n_block):
         ROOT = f"Transformer/encoderblock_{n_block}"
         with torch.no_grad():
-            query_weight = np2th(weights[ROOT + "/" + ATTENTION_Q + "/" + "kernel"]).view(self.hidden_size, self.hidden_size).t()
-            key_weight = np2th(weights[ROOT + "/" + ATTENTION_K + "/" + "kernel"]).view(self.hidden_size, self.hidden_size).t()
-            value_weight = np2th(weights[ROOT + "/" + ATTENTION_V + "/" + "kernel"]).view(self.hidden_size, self.hidden_size).t()
-            out_weight = np2th(weights[ROOT + "/" + ATTENTION_OUT + "/" + "kernel"]).view(self.hidden_size, self.hidden_size).t()
+            query_weight = (
+                np2th(weights[ROOT + "/" + ATTENTION_Q + "/" + "kernel"])
+                .view(self.hidden_size, self.hidden_size)
+                .t()
+            )
+            key_weight = (
+                np2th(weights[ROOT + "/" + ATTENTION_K + "/" + "kernel"])
+                .view(self.hidden_size, self.hidden_size)
+                .t()
+            )
+            value_weight = (
+                np2th(weights[ROOT + "/" + ATTENTION_V + "/" + "kernel"])
+                .view(self.hidden_size, self.hidden_size)
+                .t()
+            )
+            out_weight = (
+                np2th(weights[ROOT + "/" + ATTENTION_OUT + "/" + "kernel"])
+                .view(self.hidden_size, self.hidden_size)
+                .t()
+            )
 
-            query_bias = np2th(weights[ROOT + "/" + ATTENTION_Q + "/" + "bias"]).view(-1)
+            query_bias = np2th(weights[ROOT + "/" + ATTENTION_Q + "/" + "bias"]).view(
+                -1
+            )
             key_bias = np2th(weights[ROOT + "/" + ATTENTION_K + "/" + "bias"]).view(-1)
-            value_bias = np2th(weights[ROOT + "/" + ATTENTION_V + "/" + "bias"]).view(-1)
-            out_bias = np2th(weights[ROOT + "/" + ATTENTION_OUT + "/" + "bias"]).view(-1)
+            value_bias = np2th(weights[ROOT + "/" + ATTENTION_V + "/" + "bias"]).view(
+                -1
+            )
+            out_bias = np2th(weights[ROOT + "/" + ATTENTION_OUT + "/" + "bias"]).view(
+                -1
+            )
 
             self.attn.query.weight.copy_(query_weight)
             self.attn.key.weight.copy_(key_weight)
@@ -221,10 +262,18 @@ class Block(nn.Module):
             self.ffn.fc1.bias.copy_(mlp_bias_0)
             self.ffn.fc2.bias.copy_(mlp_bias_1)
 
-            self.attention_norm.weight.copy_(np2th(weights[ROOT + "/" + ATTENTION_NORM + "/" + "scale"]))
-            self.attention_norm.bias.copy_(np2th(weights[ROOT + "/" + ATTENTION_NORM + "/" + "bias"]))
-            self.ffn_norm.weight.copy_(np2th(weights[ROOT + "/" + MLP_NORM + "/" + "scale"]))
-            self.ffn_norm.bias.copy_(np2th(weights[ROOT + "/" + MLP_NORM + "/" + "bias"]))
+            self.attention_norm.weight.copy_(
+                np2th(weights[ROOT + "/" + ATTENTION_NORM + "/" + "scale"])
+            )
+            self.attention_norm.bias.copy_(
+                np2th(weights[ROOT + "/" + ATTENTION_NORM + "/" + "bias"])
+            )
+            self.ffn_norm.weight.copy_(
+                np2th(weights[ROOT + "/" + MLP_NORM + "/" + "scale"])
+            )
+            self.ffn_norm.bias.copy_(
+                np2th(weights[ROOT + "/" + MLP_NORM + "/" + "bias"])
+            )
 
 
 class Encoder(nn.Module):
@@ -260,14 +309,16 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=24, zero_head=False, vis=False):
+    def __init__(
+        self, config, img_size=224, num_KPs=24, zero_head=False, vis=False
+    ):  # defaults to using 24 KPs
         super(VisionTransformer, self).__init__()
-        self.num_classes = num_classes
+        self.num_KPs = num_KPs
         self.zero_head = zero_head
         self.classifier = config.classifier
 
         self.transformer = Transformer(config, img_size, vis)
-        self.head = Linear(config.hidden_size, num_classes)
+        self.head = Linear(config.hidden_size, num_KPs)
 
     def forward(self, x, labels=None):
         x, attn_weights = self.transformer(x.float())
@@ -276,7 +327,7 @@ class VisionTransformer(nn.Module):
 
         if labels is not None:
             loss_fct = MSELoss()
-            labels = labels.view(labels.shape[0], 24)
+            labels = labels.view(labels.shape[0], self.num_classes)
             loss = loss_fct(logits.view(-1), labels.view(-1))
             return loss
         else:
@@ -291,18 +342,29 @@ class VisionTransformer(nn.Module):
                 self.head.weight.copy_(np2th(weights["head/kernel"]).t())
                 self.head.bias.copy_(np2th(weights["head/bias"]).t())
 
-            self.transformer.embeddings.patch_embeddings.weight.copy_(np2th(weights["embedding/kernel"], conv=True))
-            self.transformer.embeddings.patch_embeddings.bias.copy_(np2th(weights["embedding/bias"]))
+            self.transformer.embeddings.patch_embeddings.weight.copy_(
+                np2th(weights["embedding/kernel"], conv=True)
+            )
+            self.transformer.embeddings.patch_embeddings.bias.copy_(
+                np2th(weights["embedding/bias"])
+            )
             self.transformer.embeddings.cls_token.copy_(np2th(weights["cls"]))
-            self.transformer.encoder.encoder_norm.weight.copy_(np2th(weights["Transformer/encoder_norm/scale"]))
-            self.transformer.encoder.encoder_norm.bias.copy_(np2th(weights["Transformer/encoder_norm/bias"]))
+            self.transformer.encoder.encoder_norm.weight.copy_(
+                np2th(weights["Transformer/encoder_norm/scale"])
+            )
+            self.transformer.encoder.encoder_norm.bias.copy_(
+                np2th(weights["Transformer/encoder_norm/bias"])
+            )
 
             posemb = np2th(weights["Transformer/posembed_input/pos_embedding"])
             posemb_new = self.transformer.embeddings.position_embeddings
             if posemb.size() == posemb_new.size():
                 self.transformer.embeddings.position_embeddings.copy_(posemb)
             else:
-                logger.info("load_pretrained: resized variant: %s to %s" % (posemb.size(), posemb_new.size()))
+                logger.info(
+                    "load_pretrained: resized variant: %s to %s"
+                    % (posemb.size(), posemb_new.size())
+                )
                 ntok_new = posemb_new.size(1)
 
                 if self.classifier == "token":
@@ -313,7 +375,7 @@ class VisionTransformer(nn.Module):
 
                 gs_old = int(np.sqrt(len(posemb_grid)))
                 gs_new = int(np.sqrt(ntok_new))
-                print('load_pretrained: grid-size from %s to %s' % (gs_old, gs_new))
+                print("load_pretrained: grid-size from %s to %s" % (gs_old, gs_new))
                 posemb_grid = posemb_grid.reshape(gs_old, gs_old, -1)
 
                 zoom = (gs_new / gs_old, gs_new / gs_old, 1)
@@ -327,23 +389,28 @@ class VisionTransformer(nn.Module):
                     unit.load_from(weights, n_block=uname)
 
             if self.transformer.embeddings.hybrid:
-                self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(np2th(weights["conv_root/kernel"], conv=True))
+                self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(
+                    np2th(weights["conv_root/kernel"], conv=True)
+                )
                 gn_weight = np2th(weights["gn_root/scale"]).view(-1)
                 gn_bias = np2th(weights["gn_root/bias"]).view(-1)
                 self.transformer.embeddings.hybrid_model.root.gn.weight.copy_(gn_weight)
                 self.transformer.embeddings.hybrid_model.root.gn.bias.copy_(gn_bias)
 
-                for bname, block in self.transformer.embeddings.hybrid_model.body.named_children():
+                for (
+                    bname,
+                    block,
+                ) in self.transformer.embeddings.hybrid_model.body.named_children():
                     for uname, unit in block.named_children():
                         unit.load_from(weights, n_block=bname, n_unit=uname)
 
 
 CONFIGS = {
-    'ViT-B_16': configs.get_b16_config(),
-    'ViT-B_32': configs.get_b32_config(),
-    'ViT-L_16': configs.get_l16_config(),
-    'ViT-L_32': configs.get_l32_config(),
-    'ViT-H_14': configs.get_h14_config(),
-    'R50-ViT-B_16': configs.get_r50_b16_config(),
-    'testing': configs.get_testing(),
+    "ViT-B_16": configs.get_b16_config(),
+    "ViT-B_32": configs.get_b32_config(),
+    "ViT-L_16": configs.get_l16_config(),
+    "ViT-L_32": configs.get_l32_config(),
+    "ViT-H_14": configs.get_h14_config(),
+    "R50-ViT-B_16": configs.get_r50_b16_config(),
+    "testing": configs.get_testing(),
 }

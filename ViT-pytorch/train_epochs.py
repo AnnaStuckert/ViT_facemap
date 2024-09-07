@@ -157,11 +157,9 @@ def save_model(args, model, epoch):
 def setup(args):
     # Prepare model
     config = CONFIGS[args.model_type]
-    num_classes = 24  # Number of keypoints to be tracked * 2 for xy coordinates
+    num_KPs = args.n_KPs * 2  # Number of keypoints to be tracked * 2 for xy coordinates
 
-    model = VisionTransformer(
-        config, args.img_size, zero_head=True, num_classes=num_classes
-    )
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_KPs=num_KPs)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -186,6 +184,7 @@ def set_seed(args):
 
 
 def valid(args, model, writer, test_loader, global_step):
+    num_KPs = args.n_KPs * 2
     # Validation
     eval_losses = AverageMeter()
 
@@ -208,7 +207,7 @@ def valid(args, model, writer, test_loader, global_step):
         x, y = batch
         with torch.no_grad():
             logits = model(x)[0]
-            y = y.view(y.shape[0], 24)
+            y = y.view(y.shape[0], num_KPs)
             eval_loss = loss_fct(logits, y)
             eval_losses.update(eval_loss.item())
 
@@ -602,6 +601,12 @@ def main():
         # required=True,
         default="facemap_project",
         help="Name for project on wandb",
+    )
+    parser.add_argument(
+        "--n_KPs",
+        type=str,
+        default=12,
+        help="Number of keypoints to predict. This will be multiplied with 2 in the algorithm to account for x,y coordinates of each KP. Thus enter the number of KPs where both x and y coordinate is accounted for so 12 KP = 24 coodinates, x and y for each KP, then enter 12",
     )
     args = parser.parse_args()
 
