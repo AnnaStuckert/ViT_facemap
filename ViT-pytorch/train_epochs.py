@@ -584,6 +584,13 @@ def main():
         default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/test/augmented_data",
         help="Directory containing testing images.",
     )
+    parser.add_argument(
+        "--wandb_project_name",
+        type=str,
+        # required=True,
+        default="facemap_project",
+        help="Name for project on wandb",
+    )
     args = parser.parse_args()
 
     # Change the working directory if specified
@@ -644,7 +651,7 @@ def main():
     # Initialize W&B
     config_file = CONFIGS[args.model_type]
     wandb.init(
-        project="your_project_name_test5", name=args.name, config=config_file
+        project=args.wandb_project_name, name=args.name, config=config_file
     )  # removed config=vars(args) - config = CONFIGS[args.model_type]
 
     # Set seed
