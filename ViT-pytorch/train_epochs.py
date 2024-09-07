@@ -427,6 +427,8 @@ def train(args, model):
 
 
 def main():
+    # Get the path of the current script (train file)
+    current_dir = os.path.dirname(__file__)
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
@@ -559,29 +561,39 @@ def main():
     parser.add_argument(
         "--train_csv_file",
         type=str,
-        # required=True,  #Use the required option when shifting completely to notebook or commandline based running of this script.
-        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+        # required=True,
+        default=os.path.join(
+            current_dir,
+            "data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+        ),
         help="Path to the training CSV file.",
     )
     parser.add_argument(
         "--train_data_dir",
         type=str,
         # required=True,
-        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/train/augmented_data",
+        default=os.path.join(
+            current_dir, "data/facemap/NaN_removed/train/augmented_data"
+        ),
         help="Directory containing training images.",
     )
     parser.add_argument(
         "--test_csv_file",
         type=str,
         # required=True,
-        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+        default=os.path.join(
+            current_dir,
+            "data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+        ),
         help="Path to the testing CSV file.",
     )
     parser.add_argument(
         "--test_data_dir",
         type=str,
         # required=True,
-        default="/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/NaN_removed/test/augmented_data",
+        default=os.path.join(
+            current_dir, "data/facemap/NaN_removed/test/augmented_data"
+        ),
         help="Directory containing testing images.",
     )
     parser.add_argument(
