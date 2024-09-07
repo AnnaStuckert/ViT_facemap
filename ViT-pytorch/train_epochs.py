@@ -141,7 +141,9 @@ def simple_accuracy(preds, labels):
 
 def save_model(args, model, epoch):
     model_to_save = model.module if hasattr(model, "module") else model
-    model_checkpoint = os.path.join(args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth")
+    model_checkpoint = os.path.join(
+        args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
+    )
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
@@ -150,7 +152,6 @@ def save_model(args, model, epoch):
 
     # upload model to wandb
     wandb.save(model_checkpoint)
-
 
 
 def setup(args):
@@ -243,8 +244,16 @@ def valid(args, model, writer, test_loader, global_step):
     rmse_results = calculate_rmse(labels=d_labels, preds=d_preds)
     avg_rmse = average_rmse(rmse_results)
 
-    d_preds.to_csv("predictions.csv")
-    d_labels.to_csv("labels.csv")
+    predictions_csv = "predictions.csv"
+    labels_csv = "labels.csv"
+
+    # Save to CSV
+    d_preds.to_csv(predictions_csv)
+    d_labels.to_csv(labels_csv)
+
+    # Log to W&B
+    wandb.save(predictions_csv)  # Save predictions.csv to W&B
+    wandb.save(labels_csv)  # Optionally save labels.csv to W&B
 
     logger.info("\n")
     logger.info("Validation Results")
@@ -394,13 +403,13 @@ def train(args, model):
             if (
                 best_acc < accuracy
             ):  # accuracy should be higher than the existing accuracy to save
-                #save_model(args, model)
+                # save_model(args, model)
                 best_acc = accuracy
             if best_loss > loss_valid:
                 best_loss = loss_valid
             # this should replace best_acc when I am sure avg_rmse is calculated over entire validation, not just last instance
             if best_rmse > avg_rmse:
-                #save_model(args, model, epoch)
+                # save_model(args, model, epoch)
                 best_rmse = avg_rmse
             model.train()
 
@@ -460,7 +469,7 @@ def main():
         "--eval_batch_size", default=20, type=int, help="Total batch size for eval."
     )
     parser.add_argument(
-        "--eval_every", # is the relevant anymore if I evaluate after each epoch?
+        "--eval_every",  # is the relevant anymore if I evaluate after each epoch?
         default=100,
         type=int,
         help="Run prediction on validation set every so many steps."
