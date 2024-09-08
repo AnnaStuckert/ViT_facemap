@@ -14,10 +14,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.distributed as dist
+import wandb
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import wandb
 from apex import amp  # For running on a GPU
 from apex.parallel.distributed import DistributedDataParallel as DDP
 from models.modeling import CONFIGS, VisionTransformer
@@ -83,32 +83,33 @@ class LossCurve(object):
         else:
             self.d_lossCurve["validation_acc"].append(None)
 
-    def save(self, fileName):
+    def save(self, fileName, args):
+        file_path = os.path.join(args.output_dir, fileName)
         df = pd.DataFrame(self.d_lossCurve)
-        df.to_csv(fileName)
+        df.to_csv(file_path)
 
-    def plot(self):
-        print("Data:", self.d_lossCurve)  # Debug print statement
-        colors = {
-            "training_loss": "blue",
-            "validation_loss": "orange",
-            "validation_acc": "green",
-        }  # Define colors for different metrics
-        for metric, color in colors.items():
-            indices = [
-                i for i, m in enumerate(self.d_lossCurve["metric"]) if m == metric
-            ]
-            print(f"Metric: {metric}, Indices: {indices}")  # Debug print statement
-            if indices:
-                steps = [self.d_lossCurve["steps"][i] for i in indices]
-                loss = [self.d_lossCurve[metric][i] for i in indices]
-                print(f"Steps: {steps}, Loss: {loss}")  # Debug print statement
-                plt.plot(steps, loss, label=f"{metric.capitalize()} Loss", color=color)
-        plt.xlabel("Steps")
-        plt.ylabel("Loss")
-        plt.title("Training Loss Curve")
-        plt.legend()
-        plt.show()
+    # def plot(self):
+    #     print("Data:", self.d_lossCurve)  # Debug print statement
+    #     colors = {
+    #         "training_loss": "blue",
+    #         "validation_loss": "orange",
+    #         "validation_acc": "green",
+    #     }  # Define colors for different metrics
+    #     for metric, color in colors.items():
+    #         indices = [
+    #             i for i, m in enumerate(self.d_lossCurve["metric"]) if m == metric
+    #         ]
+    #         print(f"Metric: {metric}, Indices: {indices}")  # Debug print statement
+    #         if indices:
+    #             steps = [self.d_lossCurve["steps"][i] for i in indices]
+    #             loss = [self.d_lossCurve[metric][i] for i in indices]
+    #             print(f"Steps: {steps}, Loss: {loss}")  # Debug print statement
+    #             plt.plot(steps, loss, label=f"{metric.capitalize()} Loss", color=color)
+    #     plt.xlabel("Steps")
+    #     plt.ylabel("Loss")
+    #     plt.title("Training Loss Curve")
+    #     plt.legend()
+    #     plt.show()
 
 
 class AverageMeter(object):
@@ -141,12 +142,10 @@ def simple_accuracy(preds, labels):
 
 def save_model(args, model, epoch):
     model_to_save = model.module if hasattr(model, "module") else model
-#    model_checkpoint = os.path.join(
- #       args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
-  #  )
-    model_checkpoint = os.path.join(
-        args.output_dir, f"{args.name}_testing20240907.pth"
-    )
+    #    model_checkpoint = os.path.join(
+    #       args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
+    #  )
+    model_checkpoint = os.path.join(args.output_dir, f"{args.name}_testing20240907.pth")
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
@@ -249,9 +248,13 @@ def valid(args, model, writer, test_loader, global_step):
     predictions_csv = "predictions.csv"
     labels_csv = "labels.csv"
 
-    # Save to CSV
-    d_preds.to_csv(predictions_csv)
-    d_labels.to_csv(labels_csv)
+    # Combine the output directory with the file names
+    predictions_csv_path = os.path.join(args.output_dir, predictions_csv)
+    labels_csv_path = os.path.join(args.output_dir, labels_csv)
+
+    # Save to CSV in the specified output directory
+    d_preds.to_csv(predictions_csv_path)
+    d_labels.to_csv(labels_csv_path)
 
     # Log to W&B
     wandb.save(predictions_csv)  # Save predictions.csv to W&B
@@ -276,7 +279,7 @@ def train(args, model):
     """Train the model"""
     if args.local_rank in [-1, 0]:
         os.makedirs(args.output_dir, exist_ok=True)
-        writer = SummaryWriter(log_dir=os.path.join("logs", args.name))
+        writer = SummaryWriter(log_dir=os.path.join(args.output_dir, "logs", args.name))
 
     # Prepare dataset
     train_loader, test_loader = get_loader(args)
@@ -416,7 +419,7 @@ def train(args, model):
             model.train()
 
         # Save loss curve after each epoch
-        lossCurve.save("lossCurve.csv")
+        lossCurve.save("lossCurve.csv", args)
         losses.reset()
 
     if args.local_rank in [-1, 0]:
@@ -458,7 +461,7 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="output",
+        default=os.path.join(current_dir, "projects/Facemap/output"),
         type=str,
         help="The output directory where checkpoints will be written.",
     )
@@ -566,7 +569,7 @@ def main():
         # required=True,
         default=os.path.join(
             current_dir,
-            "data/facemap/NaN_removed/train/augmented_data/augmented_labels.csv",
+            "projects/Facemap/data/train/augmented_data/augmented_labels.csv",
         ),
         help="Path to the training CSV file.",
     )
@@ -574,9 +577,7 @@ def main():
         "--train_data_dir",
         type=str,
         # required=True,
-        default=os.path.join(
-            current_dir, "data/facemap/NaN_removed/train/augmented_data"
-        ),
+        default=os.path.join(current_dir, "projects/Facemap/data/train/augmented_data"),
         help="Directory containing training images.",
     )
     parser.add_argument(
@@ -585,7 +586,7 @@ def main():
         # required=True,
         default=os.path.join(
             current_dir,
-            "data/facemap/NaN_removed/test/augmented_data/augmented_labels.csv",
+            "projects/Facemap/data/test/augmented_data/augmented_labels.csv",
         ),
         help="Path to the testing CSV file.",
     )
@@ -593,9 +594,7 @@ def main():
         "--test_data_dir",
         type=str,
         # required=True,
-        default=os.path.join(
-            current_dir, "data/facemap/NaN_removed/test/augmented_data"
-        ),
+        default=os.path.join(current_dir, "projects/Facemap/data/test/augmented_data"),
         help="Directory containing testing images.",
     )
     parser.add_argument(
@@ -607,7 +606,7 @@ def main():
     )
     parser.add_argument(
         "--n_KPs",
-        type=str,
+        type=int,
         default=12,
         help="Number of keypoints to predict. This will be multiplied with 2 in the algorithm to account for x,y coordinates of each KP. Thus enter the number of KPs where both x and y coordinate is accounted for so 12 KP = 24 coodinates, x and y for each KP, then enter 12",
     )
@@ -617,7 +616,15 @@ def main():
     config_filename = f"config_{args.name}.yaml"
     import yaml
 
-    with open(config_filename, "w") as outfile:
+    # Combine output directory with the config filename
+    config_filepath = os.path.join(args.output_dir, config_filename)
+
+    # Ensure the output directory exists
+    if not os.path.exists(os.path.dirname(config_filepath)):
+        os.makedirs(os.path.dirname(config_filepath))
+
+    # Save the configuration file in the specified output directory
+    with open(config_filepath, "w") as outfile:
         yaml.dump(vars(args), outfile, default_flow_style=False)
 
     # Setup device: CUDA, MPS (Apple Silicon), or CPU
@@ -667,7 +674,10 @@ def main():
     # Initialize W&B
     config_file = CONFIGS[args.model_type]
     wandb.init(
-        project=args.wandb_project_name, name=args.name, config=config_file
+        project=args.wandb_project_name,
+        name=args.name,
+        config=config_file,
+        dir=args.output_dir,
     )  # removed config=vars(args) - config = CONFIGS[args.model_type]
 
     # Set seed
