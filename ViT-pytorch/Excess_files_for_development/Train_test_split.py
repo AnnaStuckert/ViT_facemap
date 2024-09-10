@@ -1,51 +1,83 @@
+# This code takes care of splitting the data into test and train sets, and removing NAs if there
+
 import os
+import shutil
+from pathlib import Path
 
 import pandas as pd
-from PIL import Image
-
-# Define the folder path
-folder_path = "/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/data/facemap/cam1_G7c1_1_labelled"
-# Define the CSV file name
-csv_filename = "cam1_G7c1_1_labels.csv"
+from sklearn.model_selection import train_test_split
 
 
-# Function to process the content of the folder
-def process_folder(folder_path, csv_filename):
-    # Construct the full path to the CSV file
-    csv_path = os.path.join(folder_path, csv_filename)
+# TODO there are still replicates in the test and train set
+def test_train_split(csv_path, source_folder, dest_folder, train_size=0.8):
+    # Ensure the base output directory exists
+    Path(dest_folder).mkdir(parents=True, exist_ok=True)
 
-    # Load the CSV file
-    keypoint_data = pd.read_csv(csv_path)
+    # Define paths for train and test CSV files
+    output_path_train_csv = os.path.join(dest_folder, "train", "train_data.csv")
+    output_path_test_csv = os.path.join(dest_folder, "test", "test_data.csv")
 
-    # List all files in the folder
-    files = os.listdir(folder_path)
+    # Ensure the train and test directories exist
+    Path(os.path.dirname(output_path_train_csv)).mkdir(parents=True, exist_ok=True)
+    Path(os.path.dirname(output_path_test_csv)).mkdir(parents=True, exist_ok=True)
 
-    # Filter .png images
-    png_files = [f for f in files if f.endswith(".png")]
+    data = pd.read_csv(csv_path)
 
-    # Process each image
-    for png_file in png_files:
-        # Extract the base filename (without extension)
-        base_filename = os.path.splitext(png_file)[0]
+    # Separate header and the rows starting from the 4th row
+    header = data.iloc[:3]
+    data_to_check = data.iloc[3:]
 
-        # Get the keypoints for this image
-        keypoints = keypoint_data[
-            keypoint_data[3] == png_file
-        ]  # Index 3 may have to be changed if image name is not in column 3
+    # Check for rows with NA values starting from the 4th row
+    na_entries = data_to_check[data_to_check.isna().any(axis=1)]
+    valid_entries = data_to_check.dropna()
 
-        if not keypoints.empty:
-            # Load the image file
-            png_path = os.path.join(folder_path, png_file)
-            image = Image.open(png_path)
+    # Ensure that image filenames are unique between the train and test datasets
+    valid_entries_unique = valid_entries.drop_duplicates(
+        subset=valid_entries.columns[2]
+    )
 
-            # Process the data (here we just print the filenames and keypoint labels)
-            print(f"Processing {png_file}")
-            print("Keypoint Labels:")
-            print(keypoints)
-            print("Image Size:", image.size)
-        else:
-            print(f"Warning: No keypoints found for {png_file}")
+    # Perform the split on the unique image filenames
+    image_names = valid_entries_unique.iloc[:, 2].unique()
+    train_images, test_images = train_test_split(
+        image_names, train_size=train_size, random_state=42
+    )
 
+    train_data = valid_entries[valid_entries.iloc[:, 2].isin(train_images)]
+    test_data = valid_entries[valid_entries.iloc[:, 2].isin(test_images)]
 
-# Call the function to process the folder
-process_folder(folder_path, csv_filename)
+    # Concatenate header with the train and test data
+    train_data_with_header = pd.concat([header, train_data])
+    test_data_with_header = pd.concat([header, test_data])
+
+    # Save the training and testing data to separate CSV files
+    train_data_with_header.to_csv(output_path_train_csv, index=False)
+    test_data_with_header.to_csv(output_path_test_csv, index=False)
+
+    # Ensure the destination folders exist
+    train_folder = os.path.join(dest_folder, "train")
+    test_folder = os.path.join(dest_folder, "test")
+    Path(train_folder).mkdir(parents=True, exist_ok=True)
+    Path(test_folder).mkdir(parents=True, exist_ok=True)
+
+    # Function to copy images from a CSV to a specific folder
+    def copy_from_csv(csv_path, target_folder):
+        data = pd.read_csv(csv_path)
+        image_names = data.iloc[:, 2].tolist()
+
+        for image_name in image_names:
+            if isinstance(image_name, str) and image_name.endswith(".png"):
+                source_path = os.path.join(source_folder, image_name)
+                if os.path.exists(source_path):
+                    shutil.copy(source_path, target_folder)
+                else:
+                    print(f"Image {source_path} not found.")
+            else:
+                print(f"Invalid image name: {image_name}")
+
+    # Copy training images
+    copy_from_csv(output_path_train_csv, train_folder)
+
+    # Copy testing images
+    copy_from_csv(output_path_test_csv, test_folder)
+
+    return na_entries, output_path_train_csv, output_path_test_csv

@@ -403,7 +403,9 @@ def train(args, model):
                     "global_step": global_step,
                 }
             )
-            save_model(args, model, epoch)
+
+            if args.save_every > 0 and (epoch + 1) % args.save_every == 0:
+                save_model(args, model, epoch)
             # TODO update model saving not using accuracy but PCK or RMSE
             if (
                 best_acc < accuracy
@@ -609,6 +611,12 @@ def main():
         type=int,
         default=12,
         help="Number of keypoints to predict. This will be multiplied with 2 in the algorithm to account for x,y coordinates of each KP. Thus enter the number of KPs where both x and y coordinate is accounted for so 12 KP = 24 coodinates, x and y for each KP, then enter 12",
+    )
+    parser.add_argument(
+        "--save_every",
+        type=int,
+        default=25,
+        help="Save the model every X epochs. Set to 0 to disable saving.",
     )
     args = parser.parse_args()
 
