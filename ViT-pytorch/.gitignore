@@ -154,7 +154,10 @@ FacemapDataBefore30July
 Facemap_videos
 data/facemap.zip
 
+projects
+augmented_data_test
+augmented_data
 
-
-#Models
-output/test_checkpoint.pth
+output_50 models
+model_files
+data/facemap
