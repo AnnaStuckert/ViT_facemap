@@ -143,9 +143,9 @@ def simple_accuracy(preds, labels):
 def save_model(args, model, epoch):
     model_to_save = model.module if hasattr(model, "module") else model
     model_checkpoint = os.path.join(
-           args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
-      )
-    #model_checkpoint = os.path.join(args.output_dir, f"{args.name}_testing20240907.pth") for saving just one model
+        args.output_dir, f"{args.name}_checkpoint_epoch_{epoch}.pth"
+    )
+    # model_checkpoint = os.path.join(args.output_dir, f"{args.name}_testing20240907.pth") for saving just one model
 
     torch.save(
         {"state_dict": model_to_save.state_dict(), **vars(args)}, model_checkpoint
@@ -430,7 +430,7 @@ def train(args, model):
     logger.info("Best Accuracy: \t%f" % best_acc)
     logger.info("Best Loss (MSE): \t%f" % best_loss)
     logger.info("End Training!")
-    #lossCurve.plot() # plots the loss curve at end of training, if required
+    # lossCurve.plot() # plots the loss curve at end of training, if required
 
 
 def main():
@@ -439,7 +439,9 @@ def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
-        "--name", default="facemap_fullData_with_augmentation_300epochs", help="Name of this run. Used for monitoring."
+        "--name",
+        default="facemap_ViT_ResNet",
+        help="Name of this run. Used for monitoring.",
     )
     parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
     parser.add_argument(
@@ -452,13 +454,15 @@ def main():
             "ViT-H_14",
             "R50-ViT-B_16",
         ],
-        default="ViT-B_16",
+        # default="ViT-B_16",
+        default="R50-ViT-B_16",
         help="Which variant to use.",
     )
     parser.add_argument(
         "--pretrained_dir",
         type=str,
-        default=os.path.join(current_dir, "model_files", "ViT-B_16.npz"),
+        # default=os.path.join(current_dir, "model_files", "ViT-B_16.npz"),
+        default=os.path.join(current_dir, "model_files", "R50+ViT-B_16.npz"),
         help="Path to the pretrained ViT model file in the model_files directory.",
     )
     parser.add_argument(
