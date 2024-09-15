@@ -88,29 +88,6 @@ class LossCurve(object):
         df = pd.DataFrame(self.d_lossCurve)
         df.to_csv(file_path)
 
-    # def plot(self):
-    #     print("Data:", self.d_lossCurve)  # Debug print statement
-    #     colors = {
-    #         "training_loss": "blue",
-    #         "validation_loss": "orange",
-    #         "validation_acc": "green",
-    #     }  # Define colors for different metrics
-    #     for metric, color in colors.items():
-    #         indices = [
-    #             i for i, m in enumerate(self.d_lossCurve["metric"]) if m == metric
-    #         ]
-    #         print(f"Metric: {metric}, Indices: {indices}")  # Debug print statement
-    #         if indices:
-    #             steps = [self.d_lossCurve["steps"][i] for i in indices]
-    #             loss = [self.d_lossCurve[metric][i] for i in indices]
-    #             print(f"Steps: {steps}, Loss: {loss}")  # Debug print statement
-    #             plt.plot(steps, loss, label=f"{metric.capitalize()} Loss", color=color)
-    #     plt.xlabel("Steps")
-    #     plt.ylabel("Loss")
-    #     plt.title("Training Loss Curve")
-    #     plt.legend()
-    #     plt.show()
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -430,7 +407,6 @@ def train(args, model):
     logger.info("Best Accuracy: \t%f" % best_acc)
     logger.info("Best Loss (MSE): \t%f" % best_loss)
     logger.info("End Training!")
-    # lossCurve.plot() # plots the loss curve at end of training, if required
 
 
 def main():
@@ -622,6 +598,12 @@ def main():
         default=50,
         help="Save the model every X epochs. Set to 0 to disable saving.",
     )
+    parser.add_argument(
+        "--use_wandb",
+        action="store_true",
+        default=False,
+        help="Whether to use Weights & Biases for logging.",
+    )
     args = parser.parse_args()
 
     # Save arguments to a config file for model specification
@@ -683,14 +665,14 @@ def main():
         )
     )
 
-    # Initialize W&B
-    config_file = CONFIGS[args.model_type]
-    wandb.init(
-        project=args.wandb_project_name,
-        name=args.name,
-        config=config_file,
-        dir=args.output_dir,
-    )  # removed config=vars(args) - config = CONFIGS[args.model_type]
+    # Initialize W&B if specified
+    if args.use_wandb:
+        wandb.init(
+            project=args.wandb_project_name,
+            name=args.name,
+            config=vars(args),
+            dir=args.output_dir,
+        )
 
     # Set seed
     set_seed(args)
