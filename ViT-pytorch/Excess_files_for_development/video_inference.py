@@ -10,6 +10,18 @@ from torchvision import transforms
 from models.modeling import CONFIGS, VisionTransformer
 
 
+def load_model(checkpoint_path, config_name, device):
+    config = CONFIGS[config_name]
+    model = VisionTransformer(
+        config, num_KPs=24, zero_head=False, img_size=224, vis=True
+    )
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["state_dict"])
+    model.to(device)
+    model.eval()
+    return model
+
+
 def preprocess_frame(frame, img_size=224):
     original_size = frame.shape[:2]
     frame = cv2.resize(frame, (img_size, img_size))
@@ -66,19 +78,9 @@ def overlay_keypoints_on_video_and_save_csv(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    print(
-        f"Initializing VideoWriter for {output_video_path} with resolution ({width}, {height})"
-    )
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
-    # Ensure the directory for CSV output exists
-    csv_dir = os.path.dirname(output_csv_path)
-    if not os.path.exists(csv_dir):
-        print(f"Creating directory: {csv_dir}")
-        os.makedirs(csv_dir)
-
-    print(f"Opening CSV file: {output_csv_path}")
     with open(output_csv_path, mode="w", newline="") as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(["Frame", "Keypoints"])
@@ -87,7 +89,6 @@ def overlay_keypoints_on_video_and_save_csv(
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
-                print(f"End of video or error reading frame {frame_index}")
                 break
 
             if frame_index < len(keypoints_list):
@@ -110,3 +111,47 @@ def overlay_keypoints_on_video_and_save_csv(
     out.release()
     print(f"Video with keypoints saved to {output_video_path}")
     print(f"Keypoints saved to {output_csv_path}")
+
+
+# Example execution
+
+from pathlib import Path
+
+# Import necessary functions and libraries
+import torch
+
+from Excess_files_for_development.video_inference import (
+    load_model,
+    overlay_keypoints_on_video_and_save_csv,
+    run_inference_on_video,
+)
+
+# Define paths and configuration
+video_path = "/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/Facemap_videos/cam1_G7c1_1_10seconds.avi"  # Path to your input video
+# checkpoint_path = '/Users/annastuckert/Documents/GitHub/ViT_facemap/ViT-pytorch/model_checkpoints/test_checkpoint.pth'  # Path to your model checkpoint file
+checkpoint_path = (
+    Path("projects")
+    / "Facemap"
+    / "wandb_model"
+    / "output"
+    / "facemap_with_augmentation_300epochs_checkpoint_epoch_299.pth"
+)
+output_video_path = "output/keypoints.mp4"  # Path to save the output video
+output_csv_path = "output/keypoints.csv"  # Path to save the keypoints CSV file
+config_name = "ViT-B_16"  # Use the appropriate configuration name for your model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Select device
+
+# Load the model
+model = load_model(checkpoint_path, config_name, device)
+
+# Run inference on the video to get predicted keypoints
+keypoints_list = run_inference_on_video(video_path, model, device)
+
+# Overlay the predicted keypoints on the video frames and save the output
+overlay_keypoints_on_video_and_save_csv(
+    video_path, keypoints_list, output_video_path, output_csv_path
+)
+
+# Output paths and check files
+print(f"Output video saved to: {output_video_path}")
+print(f"Output CSV saved to: {output_csv_path}")
