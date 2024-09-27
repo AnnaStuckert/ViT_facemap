@@ -53,36 +53,31 @@ def conv1x1(cin, cout, stride=1, bias=False):
 
 
 class PreActBottleneck(nn.Module):
-    """Pre-activation (v2) bottleneck block.
-    """
+    """Pre-activation (v2) bottleneck block."""
 
     def __init__(self, cin, cout=None, cmid=None, stride=1):
         super().__init__()
         cout = cout or cin
-        cmid = cmid or cout//4
+        cmid = cmid or cout // 4
 
         self.gn1 = nn.GroupNorm(32, cmid, eps=1e-6)
         self.conv1 = conv1x1(cin, cmid, bias=False)
         self.gn2 = nn.GroupNorm(32, cmid, eps=1e-6)
-        self.conv2 = conv3x3(cmid, cmid, stride, bias=False)  # Original code has it on conv1!!
+        self.conv2 = conv3x3(cmid, cmid, stride, bias=False)
         self.gn3 = nn.GroupNorm(32, cout, eps=1e-6)
         self.conv3 = conv1x1(cmid, cout, bias=False)
         self.relu = nn.ReLU(inplace=True)
 
-        if (stride != 1 or cin != cout):
-            # Projection also with pre-activation according to paper.
+        if stride != 1 or cin != cout:
             self.downsample = conv1x1(cin, cout, stride, bias=False)
             self.gn_proj = nn.GroupNorm(cout, cout)
 
     def forward(self, x):
-
-        # Residual branch
         residual = x
         if hasattr(self, 'downsample'):
             residual = self.downsample(x)
             residual = self.gn_proj(residual)
 
-        # Unit's branch
         y = self.relu(self.gn1(self.conv1(x)))
         y = self.relu(self.gn2(self.conv2(y)))
         y = self.gn3(self.conv3(y))
@@ -91,18 +86,18 @@ class PreActBottleneck(nn.Module):
         return y
 
     def load_from(self, weights, n_block, n_unit):
-        conv1_weight = np2th(weights[pjoin(n_block, n_unit, "conv1/kernel")], conv=True)
-        conv2_weight = np2th(weights[pjoin(n_block, n_unit, "conv2/kernel")], conv=True)
-        conv3_weight = np2th(weights[pjoin(n_block, n_unit, "conv3/kernel")], conv=True)
+        conv1_weight = np2th(weights[f"{n_block}/{n_unit}/conv1/kernel"], conv=True)
+        conv2_weight = np2th(weights[f"{n_block}/{n_unit}/conv2/kernel"], conv=True)
+        conv3_weight = np2th(weights[f"{n_block}/{n_unit}/conv3/kernel"], conv=True)
 
-        gn1_weight = np2th(weights[pjoin(n_block, n_unit, "gn1/scale")])
-        gn1_bias = np2th(weights[pjoin(n_block, n_unit, "gn1/bias")])
+        gn1_weight = np2th(weights[f"{n_block}/{n_unit}/gn1/scale"])
+        gn1_bias = np2th(weights[f"{n_block}/{n_unit}/gn1/bias"])
 
-        gn2_weight = np2th(weights[pjoin(n_block, n_unit, "gn2/scale")])
-        gn2_bias = np2th(weights[pjoin(n_block, n_unit, "gn2/bias")])
+        gn2_weight = np2th(weights[f"{n_block}/{n_unit}/gn2/scale"])
+        gn2_bias = np2th(weights[f"{n_block}/{n_unit}/gn2/bias"])
 
-        gn3_weight = np2th(weights[pjoin(n_block, n_unit, "gn3/scale")])
-        gn3_bias = np2th(weights[pjoin(n_block, n_unit, "gn3/bias")])
+        gn3_weight = np2th(weights[f"{n_block}/{n_unit}/gn3/scale"])
+        gn3_bias = np2th(weights[f"{n_block}/{n_unit}/gn3/bias"])
 
         self.conv1.weight.copy_(conv1_weight)
         self.conv2.weight.copy_(conv2_weight)
@@ -118,9 +113,9 @@ class PreActBottleneck(nn.Module):
         self.gn3.bias.copy_(gn3_bias.view(-1))
 
         if hasattr(self, 'downsample'):
-            proj_conv_weight = np2th(weights[pjoin(n_block, n_unit, "conv_proj/kernel")], conv=True)
-            proj_gn_weight = np2th(weights[pjoin(n_block, n_unit, "gn_proj/scale")])
-            proj_gn_bias = np2th(weights[pjoin(n_block, n_unit, "gn_proj/bias")])
+            proj_conv_weight = np2th(weights[f"{n_block}/{n_unit}/conv_proj/kernel"], conv=True)
+            proj_gn_weight = np2th(weights[f"{n_block}/{n_unit}/gn_proj/scale"])
+            proj_gn_bias = np2th(weights[f"{n_block}/{n_unit}/gn_proj/bias"])
 
             self.downsample.weight.copy_(proj_conv_weight)
             self.gn_proj.weight.copy_(proj_gn_weight.view(-1))

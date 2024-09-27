@@ -30,6 +30,7 @@ from utils.performance_metrics import (
     calculate_rmse,
 )
 from utils.scheduler import WarmupCosineSchedule, WarmupLinearSchedule
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 
 def save_predictions_to_csv(predictions, filepath):
@@ -416,7 +417,7 @@ def main():
     # Required parameters
     parser.add_argument(
         "--name",
-        default="facemap_ViT_ResNet",
+        default="facemap_ViT_imagenetNormalize_w_data_augmentation",
         help="Name of this run. Used for monitoring.",
     )
     parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
@@ -430,15 +431,16 @@ def main():
             "ViT-H_14",
             "R50-ViT-B_16",
         ],
-        # default="ViT-B_16",
-        default="R50-ViT-B_16",
+        default="ViT-B_16",
+        #default="R50-ViT-B_16",
         help="Which variant to use.",
     )
     parser.add_argument(
         "--pretrained_dir",
         type=str,
-        # default=os.path.join(current_dir, "model_files", "ViT-B_16.npz"),
-        default=os.path.join(current_dir, "model_files", "R50+ViT-B_16.npz"),
+        default=os.path.join(current_dir, "model_files", "ViT-B_16.npz"),
+        #default=os.path.join(current_dir, "model_files", "R50+ViT-B_16.npz"),
+        #default= r"C:\Users\avs20\Documents\GitHub\ViT_facemap\ViT-pytorch\model_files\R50+ViT-B_16.npz",
         help="Path to the pretrained ViT model file in the model_files directory.",
     )
     parser.add_argument(
@@ -601,7 +603,7 @@ def main():
     parser.add_argument(
         "--use_wandb",
         action="store_true",
-        default=False,
+        default=True,
         help="Whether to use Weights & Biases for logging.",
     )
     args = parser.parse_args()
