@@ -417,7 +417,7 @@ def main():
     # Required parameters
     parser.add_argument(
         "--name",
-        default="facemap_ViT_imagenetNormalize_w_data_augmentation",
+        default="facemap_ViT_DROPOUT0.1_w_data_augmentation",
         help="Name of this run. Used for monitoring.",
     )
     parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
