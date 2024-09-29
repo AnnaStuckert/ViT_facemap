@@ -480,7 +480,7 @@ def main():
     )
     parser.add_argument(
         "--num_epochs",
-        default=300,  # Changed from num_steps to num_epochs
+        default=100,  # Changed from num_steps to num_epochs
         type=int,
         help="Total number of training epochs to perform.",
     )
@@ -585,7 +585,7 @@ def main():
         "--wandb_project_name",
         type=str,
         # required=True,
-        default="facemap_project",
+        default="facemap_project_cleaned",
         help="Name for project on wandb",
     )
     parser.add_argument(
