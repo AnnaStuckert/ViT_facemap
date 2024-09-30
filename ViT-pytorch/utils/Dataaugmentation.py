@@ -24,18 +24,27 @@ class Rescale(object):
         image, landmarks = sample["image"], sample["landmarks"]
 
         h, w = image.shape[:2]
-        if isinstance(self.output_size, int):
-            if h > w:
-                new_h, new_w = self.output_size * h / w, self.output_size
-            else:
-                new_h, new_w = self.output_size, self.output_size * w / h
-        else:
-            new_h, new_w = self.output_size
+        #if isinstance(self.output_size, int):
+        #    if h > w:
+        #        new_h, new_w = self.output_size * h / w, self.output_size
+        #    else:
+        #        new_h, new_w = self.output_size, self.output_size * w / h
+        #else:
+        #    new_h, new_w = self.output_size
 
-        new_h, new_w = int(new_h), int(new_w)
+        #new_h, new_w = int(new_h), int(new_w)
 
-        img = transform.resize(image, (new_h, new_w))
-        landmarks = landmarks * [new_w / w, new_h / h]
+        # Ensure the final output is (224, 224)
+        ##new_h = new_w = (
+        #    self.output_size
+        #    if isinstance(self.output_size, int)
+        #    else self.output_size[0]
+        #)
+
+        #img = transform.resize(image, (new_h, new_w), anti_aliasing=True)
+        img = transform.resize(image, (self.output_size,self.output_size), anti_aliasing=True)
+        #landmarks = landmarks * [new_w / w, new_h / h]
+        landmarks = landmarks * [self.output_size / w, self.output_size / h]
         return {"image": img, "landmarks": landmarks}
 
 

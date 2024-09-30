@@ -417,7 +417,7 @@ def main():
     # Required parameters
     parser.add_argument(
         "--name",
-        default="facemap_ViT_DROPOUT0.1_w_data_augmentation",
+        default="imagenet_normalization_ViT_DROPOUT_0.0_w_data_augmentation",
         help="Name of this run. Used for monitoring.",
     )
     parser.add_argument("--dataset", default="facemap", help="Which downstream task.")
@@ -585,7 +585,7 @@ def main():
         "--wandb_project_name",
         type=str,
         # required=True,
-        default="facemap_project_cleaned",
+        default="facemap_project_cleaned_USE_THIS",
         help="Name for project on wandb",
     )
     parser.add_argument(
