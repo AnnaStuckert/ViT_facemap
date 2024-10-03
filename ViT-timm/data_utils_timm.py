@@ -1,17 +1,75 @@
+import logging
 import os
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torchvision.transforms as transforms
-from PIL import Image
+from skimage import io, transform
 from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from torchvision import datasets, transforms
+from torchvision.io import read_image
 
-# Assuming you have already defined your FaceLandmarksDataset
-# from your_dataset_file import FaceLandmarksDataset
+logger = logging.getLogger(__name__)
+
+
+class FaceLandmarksDataset(Dataset):
+    """Face Landmarks dataset."""
+
+    def __init__(self, root_dir, csv_file, transform=None):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.landmarks_frame = pd.read_csv(csv_file)
+        self.root_dir = root_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.landmarks_frame)
+
+
+class FaceLandmarksDataset(Dataset):
+    """Face Landmarks dataset."""
+
+    def __init__(self, root_dir, csv_file, transform=None):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.landmarks_frame = pd.read_csv(csv_file)
+        self.root_dir = root_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.landmarks_frame)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        # Get image file path and load the image
+        img_name = os.path.join(self.root_dir, self.landmarks_frame.iloc[idx, 0])
+        image = io.imread(img_name)  # Load image using skimage
+
+        # Extract landmarks and convert them into the right format
+        landmarks = self.landmarks_frame.iloc[idx, 1:].values.astype(float)
+        landmarks = landmarks.reshape(-1, 2)  # Ensure landmarks are reshaped
+
+        # Create a sample dictionary
+        sample = {"image": image, "landmarks": landmarks}
+
+        # Apply any transforms (e.g., ToTensor, Normalize)
+        if self.transform:
+            sample = self.transform(sample)
+
+        # Return image and landmarks separately
+        return sample["image"].float(), sample["landmarks"].float()
 
 
 class ToTensor(object):
@@ -37,28 +95,6 @@ class Normalize(object):
         return {"image": image, "landmarks": landmarks}
 
 
-class FaceLandmarksDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=None):
-        self.annotations = pd.read_csv(csv_file)
-        self.root_dir = root_dir
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.annotations)
-
-    def __getitem__(self, idx):
-        img_name = os.path.join(self.root_dir, self.annotations.iloc[idx, 0])
-        image = Image.open(img_name)  # Use PIL to open the image
-        landmarks = self.annotations.iloc[idx, 1:].values.astype(
-            "float"
-        )  # Assuming the landmarks are in the remaining columns
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, landmarks
-
-
 def get_loader(
     train_csv_file,
     train_data_dir,
@@ -73,10 +109,12 @@ def get_loader(
         root_dir=train_data_dir,
         transform=transforms.Compose(
             [
+                # transforms.Resize((224, 224)),
                 ToTensor(),
+                # Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 Normalize(
                     mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),  # ImageNet values
+                ),  # imagenet values
             ]
         ),
     )
@@ -86,7 +124,9 @@ def get_loader(
         root_dir=test_data_dir,
         transform=transforms.Compose(
             [
+                # transforms.Resize((224, 224)),
                 ToTensor(),
+                # Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
                 Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         ),
@@ -99,12 +139,12 @@ def get_loader(
         shuffle=True,
         pin_memory=True,
     )
-
     test_loader = (
         DataLoader(
             testset,
             batch_size=eval_batch_size,
             num_workers=4,
+            # shuffle=True,
             pin_memory=True,
         )
         if testset is not None
