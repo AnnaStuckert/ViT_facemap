@@ -1,0 +1,19 @@
+Epoch [1/50], Batch [0/45], Loss: 1452.8485
+Epoch [1/50], Batch [10/45], Loss: 1133.5032
+Epoch [1/50], Batch [20/45], Loss: 980.4119
+Epoch [1/50], Batch [30/45], Loss: 986.3438
+Epoch [1/50], Batch [40/45], Loss: 1062.3524
+Epoch [1/50], Average Loss: 2227.7668
+Epoch [2/50], Batch [0/45], Loss: 1085.3826
+Epoch [2/50], Batch [10/45], Loss: 1052.0665
+Epoch [2/50], Batch [20/45], Loss: 1189.1100
+Epoch [2/50], Batch [30/45], Loss: 1219.1938
+Epoch [2/50], Batch [40/45], Loss: 972.3714
+Epoch [2/50], Average Loss: 1063.8849
+Epoch [3/50], Batch [0/45], Loss: 1005.0248
+Epoch [3/50], Batch [10/45], Loss: 1136.2539
+Epoch [3/50], Batch [20/45], Loss: 1051.1498
+Epoch [3/50], Batch [30/45], Loss: 1012.3502
+Epoch [3/50], Batch [40/45], Loss: 1097.0648
+Epoch [3/50], Average Loss: 1038.7172
+Epoch [4/50], Batch [0/45], Loss: 998.1172

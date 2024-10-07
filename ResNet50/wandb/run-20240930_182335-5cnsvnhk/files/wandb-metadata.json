@@ -1,0 +1,52 @@
+{
+    "os": "Windows-10-10.0.22631-SP0",
+    "python": "3.11.9",
+    "heartbeatAt": "2024-09-30T17:23:36.540502",
+    "startedAt": "2024-09-30T17:23:35.590784",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "<python with no main file>",
+    "codePathLocal": null,
+    "git": {
+        "remote": "https://github.com/AnnaStuckert/ViT_facemap.git",
+        "commit": "c9034daa592621c5511d1705cecac2dfcb14cd2c"
+    },
+    "email": "anna.stuckert97@gmail.com",
+    "root": "C:/Users/avs20/Documents/GitHub/ViT_facemap",
+    "host": "PC30122",
+    "username": "avs20",
+    "executable": "C:\\Users\\avs20\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\\python.exe",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "cpu_freq": {
+        "current": 3900.0,
+        "min": 0.0,
+        "max": 3900.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3900.0,
+            "min": 0.0,
+            "max": 3900.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 237.86034774780273,
+            "used": 216.93163681030273
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3060",
+            "memory_total": 12884901888
+        }
+    ],
+    "memory": {
+        "total": 15.34334945678711
+    }
+}

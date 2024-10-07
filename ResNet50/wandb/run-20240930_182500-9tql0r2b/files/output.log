@@ -1,0 +1,6 @@
+Epoch [1/50], Batch [0/45], Loss: 10745.4717
+Epoch [1/50], Batch [10/45], Loss: 7709.1396
+Epoch [1/50], Batch [20/45], Loss: 5159.9023
+Epoch [1/50], Batch [30/45], Loss: 3220.6516
+Epoch [1/50], Batch [40/45], Loss: 1858.5540
+Epoch [1/50], Average Training Loss: 5368.4545
